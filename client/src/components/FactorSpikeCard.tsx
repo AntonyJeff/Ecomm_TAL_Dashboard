@@ -7,10 +7,10 @@ function todayIso(): string {
 }
 
 /**
- * Bento-grid version of the daily spike alert (see FactorSpikeBanner for the
- * full reasoning on why this never shows a live/mid-day "today" - same data,
- * same rule, just restyled to sit as one of the four top cards instead of a
- * full-width banner).
+ * Compact daily spike card (see FactorSpikeBanner on main for the full
+ * reasoning on why this never shows a live/mid-day "today" - same data,
+ * same rule, just restyled per the reference mockup: a number, a one-line
+ * breakdown, and a text link instead of a button).
  */
 export function FactorSpikeCard() {
   const [hotCount, setHotCount] = useState<number | null>(null);
@@ -35,39 +35,32 @@ export function FactorSpikeCard() {
   }, []);
 
   const total = hotCount !== null && warmCount !== null ? hotCount + warmCount : null;
-  const asOfLabel = date ? (date === todayIso() ? "today" : `as of ${date}`) : "";
+  const isToday = date === todayIso();
+  const dateSuffix = date ? (isToday ? "Today" : date) : "";
 
   return (
-    <div className={`bento-card bento-spike${total && total > 0 ? " bento-spike-active" : ""}`}>
+    <div className="bento-card">
       <div className="bento-card-top">
-        <span className="bento-card-label">Daily spikes</span>
-        <span className="bento-icon-badge bento-icon-spike">⚡</span>
+        <span className="bento-card-label">Daily spikes{dateSuffix ? ` · ${dateSuffix}` : ""}</span>
       </div>
 
-      {error && <div className="bento-card-value">—</div>}
-      {!error && total === null && <div className="bento-card-value">…</div>}
+      {error && <div className="spike-card-value">—</div>}
+      {!error && total === null && <div className="spike-card-value">…</div>}
       {!error && total !== null && (
         <>
-          <div className="bento-card-value">{total}</div>
-          <div className="bento-spike-breakdown">
-            {hotCount! > 0 && (
-              <span>
-                🔥 {hotCount} Hot
-              </span>
-            )}
-            {warmCount! > 0 && (
-              <span>
-                🟠 {warmCount} Warm
-              </span>
-            )}
-            {total === 0 && <span>No major engagement spikes</span>}
+          <div className="spike-card-value">{total}</div>
+          <div className="spike-card-breakdown">
+            {total === 0
+              ? "No major engagement spikes"
+              : [hotCount! > 0 ? `${hotCount} Hot` : null, warmCount! > 0 ? `${warmCount} Warm` : null]
+                  .filter(Boolean)
+                  .join(" · ")}
           </div>
-          <button className="bento-cta" onClick={() => setOpen(true)} disabled={!date}>
-            Click for details and why →
+          <button className="spike-card-link" onClick={() => setOpen(true)} disabled={!date}>
+            View spikes and reasons →
           </button>
         </>
       )}
-      <div className="bento-card-caption">{asOfLabel || "no sync yet"}</div>
 
       {open && date && <FactorSpikesModal initialDate={date} onClose={() => setOpen(false)} />}
     </div>

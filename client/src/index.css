@@ -1,3 +1,7 @@
+/* UI trial (redesign-tabbed-kpi branch): Netcore-style navy + orange palette,
+   replacing the purple accent used everywhere else - per an exact reference
+   mockup the user asked to replicate (navy cards, orange accent/active
+   states, no purple). */
 :root {
   color-scheme: dark;
   --page: #0a0c16;
@@ -6,8 +10,8 @@
   --text: #e2e8f0;
   --text-2: #94a3b8;
   --muted: #4a5568;
-  --accent: #6c5ce7;
-  --accent-2: #a29bfe;
+  --accent: #ff6a3d;
+  --accent-2: #ffb020;
   --accent-pink: #ff6fa5;
   --accent-amber: #ffc75f;
   --accent-blue: #4da3ff;
@@ -28,8 +32,8 @@
   --text: #201c34;
   --text-2: #6f6a8c;
   --muted: #9691b4;
-  --accent: #6c5ce7;
-  --accent-2: #00c2a8;
+  --accent: #ff6a3d;
+  --accent-2: #e2650a;
   --border: rgba(32, 28, 52, 0.08);
   --shadow: 0 8px 30px rgba(32, 28, 52, 0.12);
   --shadow-sm: 0 2px 10px rgba(32, 28, 52, 0.08);
@@ -131,7 +135,7 @@ body {
   display: inline-block;
   padding: 1px 8px;
   border-radius: 6px;
-  background: rgba(108, 92, 231, 0.12);
+  background: rgba(255, 106, 61, 0.12);
   color: var(--accent-2);
 }
 
@@ -190,7 +194,7 @@ body {
 .modal-search:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(108, 92, 231, 0.18);
+  box-shadow: 0 0 0 3px rgba(255, 106, 61, 0.18);
 }
 
 .toolbar select {
@@ -236,7 +240,7 @@ body {
 .table-scroll {
   overflow-x: auto;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 0 0 14px 14px;
   box-shadow: var(--shadow-sm);
 }
 
@@ -279,7 +283,7 @@ body {
 }
 
 .account-table tbody tr:hover {
-  background: rgba(108, 92, 231, 0.07);
+  background: rgba(255, 106, 61, 0.07);
 }
 
 .account-table tbody tr:last-child td {
@@ -298,7 +302,7 @@ body {
 }
 
 .metric-btn:hover:not(:disabled) {
-  background: rgba(108, 92, 231, 0.16);
+  background: rgba(255, 106, 61, 0.16);
 }
 
 .metric-btn:active:not(:disabled) {
@@ -517,7 +521,7 @@ body {
 }
 
 .modal-close:hover {
-  background: rgba(108, 92, 231, 0.12);
+  background: rgba(255, 106, 61, 0.12);
   color: var(--text);
 }
 
@@ -596,7 +600,7 @@ body {
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  background: rgba(108, 92, 231, 0.14);
+  background: rgba(255, 106, 61, 0.14);
   color: var(--accent-2);
   display: flex;
   align-items: center;
@@ -637,7 +641,7 @@ body {
 }
 
 .timeline-card-clickable:hover {
-  background: rgba(108, 92, 231, 0.06);
+  background: rgba(255, 106, 61, 0.06);
 }
 
 .timeline-card-clickable:focus-visible {
@@ -719,7 +723,7 @@ body {
 }
 
 .timeline-pill-neutral {
-  background: rgba(108, 92, 231, 0.14);
+  background: rgba(255, 106, 61, 0.14);
   color: var(--accent-2);
 }
 
@@ -766,15 +770,28 @@ body {
 }
 
 .cell-account {
-  max-width: 220px;
+  max-width: 230px;
 }
 
-.cell-domain {
-  max-width: 190px;
+.cell-account-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cell-account-domain {
+  font-size: 12px;
+  color: var(--text-2);
+  font-weight: 400;
+  max-width: 230px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cell-owner {
   max-width: 160px;
+  color: var(--accent-blue);
 }
 
 /* Frozen left columns: Account + Domain stay put while the rest of the
@@ -791,29 +808,32 @@ thead .sticky-col {
   background: var(--surface-2);
 }
 
+/* Domain merged into the Account cell (stacked underneath the name) per the
+   reference mockup, so there are only 5 frozen columns now, not 6. */
 .sticky-col-1 {
   left: 0;
-  width: 220px;
-  min-width: 220px;
-  max-width: 220px;
+  width: 230px;
+  min-width: 230px;
+  max-width: 230px;
 }
 
 .sticky-col-2 {
-  left: 220px;
-  width: 190px;
-  min-width: 190px;
-  max-width: 190px;
-}
-
-.sticky-col-3 {
-  left: 410px;
+  left: 230px;
   width: 160px;
   min-width: 160px;
   max-width: 160px;
 }
 
+.sticky-col-3 {
+  left: 390px;
+  width: 94px;
+  min-width: 94px;
+  max-width: 94px;
+  text-align: right;
+}
+
 .sticky-col-4 {
-  left: 570px;
+  left: 484px;
   width: 94px;
   min-width: 94px;
   max-width: 94px;
@@ -821,15 +841,7 @@ thead .sticky-col {
 }
 
 .sticky-col-5 {
-  left: 664px;
-  width: 94px;
-  min-width: 94px;
-  max-width: 94px;
-  text-align: center;
-}
-
-.sticky-col-6 {
-  left: 758px;
+  left: 578px;
   width: 136px;
   min-width: 136px;
   max-width: 136px;
@@ -865,8 +877,8 @@ thead .sticky-col {
 }
 
 .factor-ice {
-  background: rgba(150, 190, 230, 0.16);
-  color: #96bee6;
+  background: rgba(148, 163, 184, 0.16);
+  color: #94a3b8;
 }
 
 .factor-unscored {
@@ -884,24 +896,24 @@ thead .sticky-col {
 }
 
 .score-high {
-  background: rgba(0, 194, 168, 0.16);
-  color: var(--accent-2, #00c2a8);
+  background: rgba(46, 204, 154, 0.16);
+  color: #2ecc9a;
 }
 
 .score-mid {
   background: rgba(255, 199, 95, 0.16);
-  color: var(--accent-amber, #e8b339);
+  color: #e8b339;
 }
 
 .score-low {
-  background: rgba(255, 111, 165, 0.14);
-  color: var(--accent-pink, #ff6fa5);
+  background: rgba(255, 90, 90, 0.14);
+  color: #ff5a5a;
 }
 
 .account-table tbody tr:hover .sticky-col {
   /* Opaque tint over the solid surface color, so scrolled content behind
      the frozen columns still stays fully hidden on hover. */
-  background: linear-gradient(rgba(108, 92, 231, 0.1), rgba(108, 92, 231, 0.1)), var(--surface);
+  background: linear-gradient(rgba(255, 106, 61, 0.1), rgba(255, 106, 61, 0.1)), var(--surface);
 }
 
 .account-link {
@@ -968,70 +980,39 @@ thead .sticky-col {
 }
 
 .linkedin-col-header {
-  background: rgba(108, 92, 231, 0.08) !important;
+  text-align: right;
 }
 
 .linkedin-col {
   color: var(--text-2);
+  text-align: right;
 }
 
-/* Four-way effort grouping: Marketing / MDR / SDR / Sales, each a visually
-   distinct, clearly colored section - a banner-style header per group plus a
-   faint matching tint down every cell in that section, so leaders can tell
-   at a glance which team drove which number without reading every label. */
+/* Only one group's columns ever render at a time now (the active tab), so a
+   single plain label spanning them is enough - no per-group color banner or
+   per-cell tint needed any more (there's no adjacent group to tell it apart
+   from). Numbers right-align so they line up, per the reference mockup. */
 .group-header {
-  text-align: center;
-  font-weight: 800;
-  letter-spacing: 0.08em;
+  text-align: left;
+  font-weight: 700;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  font-size: 12px;
+  font-size: 11px;
+  color: var(--accent);
+  background: var(--surface-2);
   padding-top: 8px;
   padding-bottom: 8px;
-  box-shadow: inset 0 -3px 0 0 var(--group-color);
 }
 
-.group-header-marketing {
-  --group-color: #8b7cf6;
-  background: rgba(139, 124, 246, 0.14);
-  color: #8b7cf6;
-  border-left: 2px solid var(--border);
-}
-
-.group-header-mdr {
-  --group-color: #e8b339;
-  background: rgba(232, 179, 57, 0.16);
-  color: #e8b339;
-  border-left: 2px solid var(--border);
-}
-
-.group-header-sdr {
-  --group-color: #2ecc9a;
-  background: rgba(46, 204, 154, 0.16);
-  color: #2ecc9a;
-  border-left: 2px solid var(--border);
-}
-
-.group-header-sales {
-  --group-color: #4da3ff;
-  background: rgba(77, 163, 255, 0.16);
-  color: #4da3ff;
-  border-left: 2px solid var(--border);
-}
-
-.group-col-marketing {
-  background: rgba(139, 124, 246, 0.04);
-}
-
-.group-col-mdr {
-  background: rgba(232, 179, 57, 0.06);
-}
-
-.group-col-sdr {
-  background: rgba(46, 204, 154, 0.06);
-}
-
+.group-col-marketing,
+.group-col-mdr,
+.group-col-sdr,
 .group-col-sales {
-  background: rgba(77, 163, 255, 0.06);
+  text-align: right;
+}
+
+.metric-zero {
+  color: var(--muted);
 }
 
 .col-filter {
@@ -1039,26 +1020,56 @@ thead .sticky-col {
   display: inline-block;
 }
 
+/* Chip-styled trigger (per the reference mockup) - dashed + "+ Label" when
+   this filter is at its default/unfiltered state, solid orange + an inline
+   × to instantly reset once it's actually narrowed. The dropdown itself
+   (col-filter-menu below) is unchanged - only the trigger's look changed. */
 .col-filter-trigger {
-  background: none;
-  border: none;
-  color: var(--text-2);
-  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
   font-size: 13px;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+  font-weight: 600;
   cursor: pointer;
-  padding: 0;
+  padding: 7px 14px;
   white-space: nowrap;
-  transition: color 150ms ease;
+  transition: border-color 150ms ease, background 150ms ease, color 150ms ease;
+  border: 1px dashed var(--border);
+  background: transparent;
+  color: var(--text-2);
+}
+
+.col-filter-trigger:hover {
+  border-color: var(--text-2);
 }
 
 .col-filter-trigger.active {
-  color: var(--accent-2);
+  border: 1px solid rgba(255, 106, 61, 0.5);
+  background: rgba(255, 106, 61, 0.12);
+  color: var(--accent);
+}
+
+.col-filter-trigger.active:hover {
+  border-color: var(--accent);
 }
 
 .col-filter-caret {
   font-size: 11px;
+}
+
+.filter-chip-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 2px;
+  opacity: 0.75;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.filter-chip-x:hover {
+  opacity: 1;
 }
 
 @keyframes menu-in {
@@ -1132,7 +1143,7 @@ thead .sticky-col {
 }
 
 .col-filter-option:hover {
-  background: rgba(108, 92, 231, 0.1);
+  background: rgba(255, 106, 61, 0.1);
 }
 
 .metric-multiselect-trigger {
@@ -1158,92 +1169,27 @@ thead .sticky-col {
   color: var(--text-2);
 }
 
-/* ---- UI trial (redesign-tabbed-kpi branch): KPI strip + group tabs ---- */
 
-.kpi-strip {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 10px;
-  margin-bottom: 14px;
-}
-
-/* Only the Factor Score split card remains - let it size to its content
-   instead of stretching edge-to-edge like a full multi-card grid would. */
-.kpi-strip-solo {
-  display: block;
-}
-
-.kpi-strip-solo .kpi-card {
-  display: inline-block;
-}
-
-.kpi-card {
+/* Tabs sit directly on the table's top edge, underlined style - not pill
+   buttons floating above it - per the reference mockup. All five use the
+   same uniform active treatment (orange underline + white text); the
+   per-group color coding that used to distinguish the tabs themselves is
+   gone now that only one group's columns are ever visible at a time. */
+.table-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 12px 16px;
-  box-shadow: var(--shadow-sm);
-}
-
-.kpi-card-highlight {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent) inset, var(--shadow-sm);
-}
-
-.kpi-value {
-  font-size: 22px;
-  font-weight: 800;
-  color: var(--text);
-  line-height: 1.2;
-}
-
-.kpi-value-name {
-  font-size: 15px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.kpi-factor-split {
-  display: flex;
-  gap: 10px;
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.kpi-label {
-  margin-top: 4px;
-  font-size: 12px;
-  color: var(--text-2);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.filters-toggle {
-  padding: 9px 14px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-  color: var(--text-2);
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: border-color 150ms ease, color 150ms ease;
-}
-
-.filters-toggle.active {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.filters-row {
-  margin-top: -4px;
+  border-bottom: none;
+  border-radius: 14px 14px 0 0;
+  padding: 0 20px;
 }
 
 .group-tabs {
   display: flex;
-  gap: 8px;
-  margin-bottom: 14px;
+  gap: 22px;
   flex-wrap: wrap;
 }
 
@@ -1251,15 +1197,15 @@ thead .sticky-col {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 9px 16px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--surface);
+  padding: 14px 0 12px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
   color: var(--text-2);
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
-  transition: border-color 150ms ease, color 150ms ease, background 150ms ease;
+  transition: color 150ms ease, border-color 150ms ease;
 }
 
 .group-tab-count {
@@ -1271,49 +1217,28 @@ thead .sticky-col {
   color: var(--text-2);
 }
 
-.group-tab-marketing.active {
-  border-color: #8b7cf6;
-  color: #8b7cf6;
-  background: rgba(139, 124, 246, 0.1);
-}
-
-.group-tab-linkedin.active {
-  border-color: #4da3ff;
-  color: #4da3ff;
-  background: rgba(77, 163, 255, 0.1);
-}
-
-.group-tab-mdr.active {
-  border-color: #e8b339;
-  color: #e8b339;
-  background: rgba(232, 179, 57, 0.12);
-}
-
-.group-tab-sdr.active {
-  border-color: #2ecc9a;
-  color: #2ecc9a;
-  background: rgba(46, 204, 154, 0.12);
-}
-
-.group-tab-sales.active {
-  border-color: #4da3ff;
-  color: #4da3ff;
-  background: rgba(77, 163, 255, 0.1);
+.group-tab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
 }
 
 .group-tab.active .group-tab-count {
-  background: rgba(255, 255, 255, 0.5);
-  color: inherit;
+  background: rgba(255, 106, 61, 0.18);
+  color: var(--accent);
 }
 
-:root[data-theme="dark"] .group-tab.active .group-tab-count {
-  background: rgba(0, 0, 0, 0.3);
+.sync-lag-note {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-2);
+  white-space: nowrap;
+  cursor: help;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .group-tab.active .group-tab-count {
-    background: rgba(0, 0, 0, 0.3);
-  }
+.sync-lag-note::before {
+  content: "•";
+  color: var(--accent);
+  margin-right: 6px;
 }
 
 /* ---- Daily Factor Score spike banner ---- */
@@ -1424,14 +1349,31 @@ thead .sticky-col {
   font-style: italic;
 }
 
-/* ---- Bento grid: the four top cards (Factor Score split, Daily spikes,
-   Period, Filters) replacing the old KPI strip + banner + toolbar rows ---- */
+/* ---- Header period row - Month/Week selectors live next to the title now,
+   since the period applies to the whole page, not one card among others ---- */
+.header-period-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
 
-.bento-grid {
+.header-period-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-2);
+  margin-right: 4px;
+}
+
+/* ---- KPI row: Factor Score split (bar, not a tall list) + Daily spikes,
+   side by side - replaces the old 2x2 bento grid ---- */
+.kpi-row {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: 2fr 1fr;
   gap: 16px;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .bento-card {
@@ -1439,18 +1381,17 @@ thead .sticky-col {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 20px;
-  padding: 22px 24px;
+  padding: 20px 24px;
   display: flex;
   flex-direction: column;
-  min-height: 150px;
   box-shadow: var(--shadow-sm);
 }
 
 .bento-card-top {
   display: flex;
-  align-items: flex-start;
+  align-items: baseline;
   justify-content: space-between;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 
 .bento-card-label {
@@ -1461,165 +1402,174 @@ thead .sticky-col {
   color: var(--text-2);
 }
 
-.bento-icon-badge {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 999px;
-  font-size: 16px;
-  flex-shrink: 0;
-}
-
-.bento-icon-factor {
-  background: rgba(255, 90, 90, 0.16);
-}
-
-.bento-icon-spike {
-  background: rgba(255, 138, 61, 0.18);
-}
-
-.bento-icon-period {
-  background: rgba(108, 92, 231, 0.18);
-}
-
-.bento-icon-filters {
-  background: rgba(77, 163, 255, 0.18);
-}
-
-.bento-card-value {
-  font-size: 32px;
-  font-weight: 800;
-  color: var(--text);
-  line-height: 1.1;
-  margin-bottom: auto;
-}
-
-.bento-card-caption {
-  margin-top: 14px;
+.bento-card-meta {
   font-size: 12px;
   color: var(--text-2);
 }
 
-/* Factor Score split card - four stacked rows instead of one big number,
-   since there isn't a single headline figure here, there are four. */
-.bento-factor-rows {
+/* Factor Score split - one proportional horizontal bar, segments sized by
+   each level's share of the total, plus a dot+number legend underneath. */
+.factor-bar {
+  display: flex;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--surface-2);
+  margin-bottom: 20px;
+}
+
+.factor-bar-segment {
+  transition: flex-basis 200ms ease;
+}
+
+.factor-bar-hot {
+  background: #ff5a5a;
+}
+
+.factor-bar-warm {
+  background: #ffaa3c;
+}
+
+.factor-bar-cool {
+  background: #5aa0ff;
+}
+
+.factor-bar-ice {
+  background: #64748b;
+}
+
+.factor-legend {
+  display: flex;
+  gap: 32px;
+}
+
+.factor-legend-item {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-bottom: auto;
+  gap: 6px;
 }
 
-.bento-factor-row {
+.factor-legend-dot-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  font-size: 15px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border);
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
-.bento-factor-row:last-child {
-  border-bottom: none;
-  padding-bottom: 0;
+.factor-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
 }
 
-.bento-factor-row strong {
-  font-size: 18px;
+.factor-legend-value {
+  font-size: 22px;
   font-weight: 800;
   color: var(--text);
 }
 
-/* Daily spike card */
-.bento-spike {
-  justify-content: flex-start;
+.factor-legend-value-zero {
+  color: var(--muted);
 }
 
-.bento-spike-active {
-  border-color: rgba(255, 90, 90, 0.4);
-  background: linear-gradient(160deg, rgba(255, 90, 90, 0.08), var(--surface) 60%);
+/* Daily spikes card - compact: number, breakdown, text link (not a button) */
+.spike-card-value {
+  font-size: 32px;
+  font-weight: 800;
+  color: var(--accent);
+  line-height: 1.1;
 }
 
-.bento-spike-breakdown {
-  display: flex;
-  gap: 12px;
-  font-size: 14px;
-  font-weight: 600;
+.spike-card-breakdown {
+  font-size: 13px;
   color: var(--text-2);
+  margin-top: 4px;
   margin-bottom: 16px;
 }
 
-.bento-cta {
-  align-self: flex-start;
-  background: linear-gradient(90deg, var(--accent), var(--accent-2));
-  color: #fff;
+.spike-card-link {
+  background: none;
   border: none;
-  border-radius: 999px;
-  padding: 10px 20px;
+  padding: 0;
+  color: var(--accent);
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
+  text-align: left;
   margin-top: auto;
-  transition: transform 150ms ease, box-shadow 150ms ease;
 }
 
-.bento-cta:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(108, 92, 231, 0.35);
+.spike-card-link:hover {
+  text-decoration: underline;
 }
 
-.bento-cta:disabled {
+.spike-card-link:disabled {
   opacity: 0.5;
   cursor: default;
 }
 
-/* Period card */
-.bento-period-selects {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-bottom: auto;
-}
-
-.bento-period-selects .week-select {
-  width: 100%;
-}
-
-/* Filters card */
-.bento-filters-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: auto;
+/* ---- Sticky search + filter chips bar ---- */
+.search-filter-bar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: var(--page);
+  padding-top: 4px;
+  padding-bottom: 12px;
+  margin-bottom: 4px;
 }
 
 .search-input-huge {
   display: block;
   width: 100%;
   box-sizing: border-box;
-  padding: 18px 24px;
-  margin-bottom: 20px;
-  border-radius: 16px;
+  padding: 16px 22px;
+  margin-bottom: 12px;
+  border-radius: 999px;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
-  font-size: 18px;
+  font-size: 15px;
   transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 
 .search-input-huge:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 4px rgba(108, 92, 231, 0.16);
+  box-shadow: 0 0 0 4px rgba(255, 106, 61, 0.16);
 }
 
 .search-input-huge::placeholder {
   color: var(--text-2);
 }
 
+.filter-chips-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.clear-all-link {
+  background: none;
+  border: none;
+  padding: 6px 4px;
+  color: var(--text-2);
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.clear-all-link:hover {
+  color: var(--text);
+}
+
 @media (max-width: 900px) {
-  .bento-grid {
+  .kpi-row {
     grid-template-columns: 1fr;
   }
 }

@@ -53,7 +53,22 @@ export function ColumnFilter({
         onClick={() => setOpen((o) => !o)}
         title={`Filter ${label}`}
       >
-        {active ? `${label}: ${selectionSummary()}` : label} <span className="col-filter-caret">▾</span>
+        {active ? (
+          <>
+            {label}: {selectionSummary()}
+            <span
+              className="filter-chip-x"
+              onClick={(e) => {
+                e.stopPropagation();
+                onChange(new Set(options));
+              }}
+            >
+              ×
+            </span>
+          </>
+        ) : (
+          <>+ {label}</>
+        )}
       </button>
       {open && (
         <div className="col-filter-menu">

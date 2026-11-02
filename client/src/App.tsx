@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   fetchAccounts,
   fetchContactCounts,
@@ -146,6 +146,13 @@ function parseMrr(v: string): number {
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+/** Renders a touchpoint/LinkedIn count as "–" for a real zero, so actual activity stands out instead of a page full of zeros. */
+function fmtMetric(n: number | undefined): ReactNode {
+  if (n === undefined) return "…";
+  if (n === 0) return <span className="metric-zero">–</span>;
+  return n;
 }
 
 function factorClass(level: string | undefined): string {
@@ -600,6 +607,36 @@ export default function App() {
     activeTab,
   ]);
 
+  const periodLabel = selectedWeekNum === "all" ? "This month" : "This week";
+  const groupHeaderLabel =
+    activeTab === "marketing"
+      ? `Marketing Engagement · ${periodLabel}`
+      : activeTab === "linkedin"
+      ? "LinkedIn · Last 7 days"
+      : activeTab === "mdr"
+      ? `MDR Engagement · ${periodLabel}`
+      : activeTab === "sdr"
+      ? `SDR Engagement · ${periodLabel}`
+      : `Sales Engagement · ${periodLabel}`;
+  const groupColCount =
+    activeTab === "marketing"
+      ? 1 + MARKETING_TOUCHPOINT_KEYS.length
+      : activeTab === "linkedin"
+      ? LINKEDIN_COLUMNS.length
+      : activeTab === "mdr"
+      ? MDR_TOUCHPOINT_KEYS.length
+      : activeTab === "sdr"
+      ? SDR_TOUCHPOINT_KEYS.length
+      : SALES_TOUCHPOINT_KEYS.length;
+
+  function clearAllFilters() {
+    setSelectedRegions(new Set(regionOptions));
+    setSelectedMrr(new Set(mrrOptions));
+    setSelectedPriorities(new Set(priorityOptions));
+    setSelectedFactorLevels(new Set(factorLevelOptions));
+    setSortMetrics(new Set());
+  }
+
   return (
     <div className="app">
       <header className="app-header">
@@ -607,157 +644,150 @@ export default function App() {
           <div>
             <h1>Ecomm TAL Dashboard</h1>
             <p className="subtitle">
-              {accounts.length.toLocaleString()} accounts · pick a month, then a week or the whole
-              month · LinkedIn shows the most recent data available as of that period
+              {accounts.length.toLocaleString()} accounts · LinkedIn shows the most recent data
+              available as of the selected period
             </p>
           </div>
-          <div className="header-actions">
-            <ThemeToggle />
-          </div>
+        </div>
+        <div className="header-period-row">
+          <span className="header-period-label">Period</span>
+          <select
+            className="week-select"
+            value={selectedMonth}
+            onChange={(e) => selectMonth(e.target.value)}
+            title="Which month's data to look at - the week selector next to it narrows within this month, or pick 'All weeks' for the full month total"
+          >
+            {monthOptions.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+          <select
+            className="week-select"
+            value={selectedWeekNum}
+            onChange={(e) => setSelectedWeekNum(e.target.value === "all" ? "all" : Number(e.target.value))}
+          >
+            <option value="all">All weeks ({monthOptions.find((m) => m.value === selectedMonth)?.label} total)</option>
+            {weeks.map((w) => (
+              <option key={w.week} value={w.week}>
+                Week {w.week} ({w.start} to {w.end})
+              </option>
+            ))}
+          </select>
+          <ThemeToggle />
         </div>
       </header>
 
-      <div className="bento-grid">
-        <div className="bento-card bento-factor">
+      <div className="kpi-row">
+        <div className="bento-card">
           <div className="bento-card-top">
             <span className="bento-card-label">Factor score split</span>
-            <span className="bento-icon-badge bento-icon-factor">🌡️</span>
+            <span className="bento-card-meta">{filtered.length.toLocaleString()} accounts match filters</span>
           </div>
           {factorKpis ? (
-            <div className="bento-factor-rows">
-              <div className="bento-factor-row">
-                <span className="factor-hot">🔥 Hot</span>
-                <strong>{factorKpis.Hot}</strong>
+            <>
+              <div className="factor-bar">
+                {(() => {
+                  const total = factorKpis.Hot + factorKpis.Warm + factorKpis.Cool + factorKpis.Ice;
+                  const pct = (n: number) => (total > 0 ? (n / total) * 100 : 0);
+                  return (
+                    <>
+                      <div
+                        className="factor-bar-segment factor-bar-hot"
+                        style={{ flexBasis: `${pct(factorKpis.Hot)}%` }}
+                      />
+                      <div
+                        className="factor-bar-segment factor-bar-warm"
+                        style={{ flexBasis: `${pct(factorKpis.Warm)}%` }}
+                      />
+                      <div
+                        className="factor-bar-segment factor-bar-cool"
+                        style={{ flexBasis: `${pct(factorKpis.Cool)}%` }}
+                      />
+                      <div
+                        className="factor-bar-segment factor-bar-ice"
+                        style={{ flexBasis: `${pct(factorKpis.Ice)}%` }}
+                      />
+                    </>
+                  );
+                })()}
               </div>
-              <div className="bento-factor-row">
-                <span className="factor-warm">🟠 Warm</span>
-                <strong>{factorKpis.Warm}</strong>
+              <div className="factor-legend">
+                {(
+                  [
+                    ["Hot", factorKpis.Hot, "factor-bar-hot"],
+                    ["Warm", factorKpis.Warm, "factor-bar-warm"],
+                    ["Cool", factorKpis.Cool, "factor-bar-cool"],
+                    ["Ice", factorKpis.Ice, "factor-bar-ice"],
+                  ] as const
+                ).map(([label, value, dotClass]) => (
+                  <div key={label} className="factor-legend-item">
+                    <div className="factor-legend-dot-row">
+                      <span className={`factor-legend-dot ${dotClass}`} />
+                      {label}
+                    </div>
+                    <div className={`factor-legend-value${value === 0 ? " factor-legend-value-zero" : ""}`}>
+                      {value}
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div className="bento-factor-row">
-                <span className="factor-cool">🧊 Cool</span>
-                <strong>{factorKpis.Cool}</strong>
-              </div>
-              <div className="bento-factor-row">
-                <span className="factor-ice">❄️ Ice</span>
-                <strong>{factorKpis.Ice}</strong>
-              </div>
-            </div>
+            </>
           ) : (
-            <div className="bento-card-value">…</div>
+            <div className="bento-card-meta">…</div>
           )}
-          <div className="bento-card-caption">across accounts matching current filters</div>
         </div>
 
         <FactorSpikeCard />
+      </div>
 
-        <div className="bento-card bento-period">
-          <div className="bento-card-top">
-            <span className="bento-card-label">Period</span>
-            <span className="bento-icon-badge bento-icon-period">📅</span>
-          </div>
-          <div className="bento-period-selects">
-            <select
-              className="week-select"
-              value={selectedMonth}
-              onChange={(e) => selectMonth(e.target.value)}
-              title="Which month's data to look at - the week selector next to it narrows within this month, or pick 'All weeks' for the full month total"
-            >
-              {monthOptions.map((m) => (
-                <option key={m.value} value={m.value}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
-            <select
-              className="week-select"
-              value={selectedWeekNum}
-              onChange={(e) => setSelectedWeekNum(e.target.value === "all" ? "all" : Number(e.target.value))}
-            >
-              <option value="all">All weeks ({monthOptions.find((m) => m.value === selectedMonth)?.label} total)</option>
-              {weeks.map((w) => (
-                <option key={w.week} value={w.week}>
-                  Week {w.week} ({w.start} to {w.end})
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="bento-card-caption">
-            {dateRange.start} to {dateRange.end}
-            {rankLoading ? " · computing…" : ""}
-          </div>
-        </div>
-
-        <div className="bento-card bento-filters">
-          <div className="bento-card-top">
-            <span className="bento-card-label">Filters</span>
-            <span className="bento-icon-badge bento-icon-filters">🔎</span>
-          </div>
-          <div className="bento-filters-row">
-            <ColumnFilter
-              label="Region"
-              options={regionOptions}
-              selected={selectedRegions}
-              onChange={setSelectedRegions}
-            />
-            <ColumnFilter
-              label="Potential MRR"
-              options={mrrOptions}
-              selected={selectedMrr}
-              onChange={setSelectedMrr}
-            />
-            <ColumnFilter
-              label="Factor Score"
-              options={factorLevelOptions}
-              selected={selectedFactorLevels}
-              onChange={setSelectedFactorLevels}
-            />
-            <ColumnFilter
-              label="Account Priority"
-              options={priorityOptions}
-              selected={selectedPriorities}
-              onChange={setSelectedPriorities}
-            />
-            <MetricMultiSelect
-              options={SORT_OPTIONS}
-              selected={sortMetrics}
-              onChange={setSortMetrics}
-              defaultLabel="Engagement filter: Score"
-            />
-          </div>
-          <div className="bento-card-caption">
-            {activeFilterCount > 0 ? `${activeFilterCount} active` : "showing everything"}
-          </div>
+      <div className="search-filter-bar">
+        <input
+          className="search-input-huge"
+          placeholder="Search account, domain or owner"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <div className="filter-chips-row">
+          <ColumnFilter
+            label="Region"
+            options={regionOptions}
+            selected={selectedRegions}
+            onChange={setSelectedRegions}
+          />
+          <ColumnFilter
+            label="Potential MRR"
+            options={mrrOptions}
+            selected={selectedMrr}
+            onChange={setSelectedMrr}
+          />
+          <ColumnFilter
+            label="Factor Score"
+            options={factorLevelOptions}
+            selected={selectedFactorLevels}
+            onChange={setSelectedFactorLevels}
+          />
+          <ColumnFilter
+            label="Account Priority"
+            options={priorityOptions}
+            selected={selectedPriorities}
+            onChange={setSelectedPriorities}
+          />
+          <MetricMultiSelect
+            options={SORT_OPTIONS}
+            selected={sortMetrics}
+            onChange={setSortMetrics}
+            defaultLabel="Engagement: Score"
+          />
+          {activeFilterCount > 0 && (
+            <button className="clear-all-link" onClick={clearAllFilters}>
+              Clear all
+            </button>
+          )}
         </div>
       </div>
 
-      <input
-        className="search-input-huge"
-        placeholder="Search for any account…"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-      />
-
-      <div className="group-tabs">
-        {GROUP_TABS.map((t) => (
-          <button
-            key={t.key}
-            className={`group-tab group-tab-${t.key}${activeTab === t.key ? " active" : ""}`}
-            onClick={() => setActiveTab(t.key)}
-          >
-            {t.label}
-            {tabAggregates && (
-              <span className="group-tab-count">{tabAggregates[t.key].toLocaleString()}</span>
-            )}
-          </button>
-        ))}
-      </div>
-
-      {weekIncludesToday && (
-        <p className="warning">
-          Heads up: email and WhatsApp activity syncs into Salesforce ~1 day behind. The most
-          recent day or two in this week may still be incomplete.
-        </p>
-      )}
       {loadError && <p className="error">{loadError}</p>}
 
       {sortMetrics.size > 0 && (
@@ -790,37 +820,74 @@ export default function App() {
         </p>
       )}
 
+      <div className="table-head-row">
+        <div className="group-tabs">
+          {GROUP_TABS.map((t) => (
+            <button
+              key={t.key}
+              className={`group-tab${activeTab === t.key ? " active" : ""}`}
+              onClick={() => setActiveTab(t.key)}
+            >
+              {t.label}
+              {tabAggregates && (
+                <span className="group-tab-count">{tabAggregates[t.key].toLocaleString()}</span>
+              )}
+            </button>
+          ))}
+        </div>
+        {weekIncludesToday && (
+          <span
+            className="sync-lag-note"
+            title="Email and WhatsApp activity syncs into Salesforce ~1 day behind. The most recent day or two in this week may still be incomplete."
+          >
+            Email &amp; WhatsApp data lags ~1 day
+          </span>
+        )}
+      </div>
+
       <div className="table-scroll">
       <table className="account-table">
         <thead>
           <tr>
-            <th className="sticky-col sticky-col-1">Account</th>
-            <th className="sticky-col sticky-col-2">Domain</th>
-            <th className="sticky-col sticky-col-3">Owner</th>
-            <th className="sticky-col sticky-col-4"># Contacts</th>
+            <th className="sticky-col sticky-col-1" rowSpan={2}>
+              Account
+            </th>
+            <th className="sticky-col sticky-col-2" rowSpan={2}>
+              Owner
+            </th>
+            <th className="sticky-col sticky-col-3" rowSpan={2}>
+              Contacts
+            </th>
             <th
-              className="sticky-col sticky-col-5"
-              title="Weighted priority score (0-100) - marketing engagement only (see “How to read this” for the formula). Frozen alongside the identifiers since it's the deciding factor for prioritizing accounts, not just another metric to scroll past."
+              className="sticky-col sticky-col-4"
+              rowSpan={2}
+              title="Weighted priority score (0-100) - marketing engagement only. Frozen alongside the identifiers since it's the deciding factor for prioritizing accounts, not just another metric to scroll past."
             >
               Score
             </th>
             <th
-              className="sticky-col sticky-col-6"
+              className="sticky-col sticky-col-5"
+              rowSpan={2}
               title={
                 factorsIsLive
                   ? "Factors.ai Engagement Level - LIVE from Salesforce right now, since today hasn't been written to history yet. Click any value for the full day-by-day trend."
                   : `Factors.ai Engagement Level as of ${factorsAsOfDate ?? "the selected period"} - permanent history, click for the full day-by-day trend.`
               }
             >
-              Factor Score
+              Factor
             </th>
-            {/* UI trial (redesign-tabbed-kpi): only the active tab's columns render - the GROUP_TABS bar above replaces the old always-visible group-header row. */}
+            <th colSpan={groupColCount} className="group-header">
+              {groupHeaderLabel}
+            </th>
+          </tr>
+          <tr>
+            {/* Only the active tab's columns render - a single group header above spans whichever set is showing. */}
             {activeTab === "marketing" && (
               <>
-                <th className="group-col-marketing"># Website sessions</th>
+                <th className="group-col-marketing">Website sessions</th>
                 {MARKETING_TOUCHPOINT_KEYS.map((k) => (
                   <th key={k} className="group-col-marketing">
-                    # {TOUCHPOINTS[k]}
+                    {TOUCHPOINTS[k]}
                   </th>
                 ))}
               </>
@@ -842,19 +909,19 @@ export default function App() {
             {activeTab === "mdr" &&
               MDR_TOUCHPOINT_KEYS.map((k) => (
                 <th key={k} className="group-col-mdr">
-                  # {TOUCHPOINTS[k]}
+                  {TOUCHPOINTS[k]}
                 </th>
               ))}
             {activeTab === "sdr" &&
               SDR_TOUCHPOINT_KEYS.map((k) => (
                 <th key={k} className="group-col-sdr">
-                  # {TOUCHPOINTS[k]}
+                  {TOUCHPOINTS[k]}
                 </th>
               ))}
             {activeTab === "sales" &&
               SALES_TOUCHPOINT_KEYS.map((k) => (
                 <th key={k} className="group-col-sales">
-                  # {TOUCHPOINTS[k]}
+                  {TOUCHPOINTS[k]}
                 </th>
               ))}
           </tr>
@@ -867,26 +934,26 @@ export default function App() {
             return (
               <tr key={a.accountId}>
                 <td className="cell-account sticky-col sticky-col-1">
-                  {instanceUrl ? (
-                    <a
-                      href={`${instanceUrl}/lightning/r/Account/${a.accountId}/view`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="account-link"
-                    >
+                  <div className="cell-account-stack">
+                    {instanceUrl ? (
+                      <a
+                        href={`${instanceUrl}/lightning/r/Account/${a.accountId}/view`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="account-link"
+                      >
+                        <HoverCell text={a.accountName} />
+                      </a>
+                    ) : (
                       <HoverCell text={a.accountName} />
-                    </a>
-                  ) : (
-                    <HoverCell text={a.accountName} />
-                  )}
+                    )}
+                    <span className="cell-account-domain">{a.website}</span>
+                  </div>
                 </td>
-                <td className="cell-domain sticky-col sticky-col-2">
-                  <HoverCell text={a.website} />
-                </td>
-                <td className="cell-owner sticky-col sticky-col-3">
+                <td className="cell-owner sticky-col sticky-col-2">
                   <HoverCell text={a.accountOwner} />
                 </td>
-                <td className="sticky-col sticky-col-4">
+                <td className="sticky-col sticky-col-3">
                   <button
                     className="metric-btn"
                     disabled={contacts === undefined}
@@ -897,7 +964,7 @@ export default function App() {
                     {contacts !== undefined ? contacts : "…"}
                   </button>
                 </td>
-                <td className="sticky-col sticky-col-5">
+                <td className="sticky-col sticky-col-4">
                   {engagementScores && scoreTiers ? (
                     <span
                       className={
@@ -916,7 +983,7 @@ export default function App() {
                     "…"
                   )}
                 </td>
-                <td className="sticky-col sticky-col-6">
+                <td className="sticky-col sticky-col-5">
                   {factorsReady ? (
                     <button
                       className={`factor-pill ${factorClass(factorsScores[a.accountId]?.level)}`}
@@ -927,7 +994,7 @@ export default function App() {
                     >
                       {factorsScores[a.accountId]?.level || "—"}
                       {factorsScores[a.accountId]?.score !== undefined && factorsScores[a.accountId]?.score !== null
-                        ? ` (${factorsScores[a.accountId]!.score})`
+                        ? ` ${factorsScores[a.accountId]!.score}`
                         : ""}
                     </button>
                   ) : (
@@ -961,7 +1028,7 @@ export default function App() {
                         {r && r.highIntentSessions === 0 && r.mediumIntentSessions > 0 && (
                           <span className="fire-icon">☀️</span>
                         )}
-                        {r ? r.websiteSessions : "…"}
+                        {fmtMetric(r?.websiteSessions)}
                       </button>
                     </td>
                     {MARKETING_TOUCHPOINT_KEYS.map((k) => (
@@ -978,7 +1045,7 @@ export default function App() {
                             })
                           }
                         >
-                          {r ? r[k] : "…"}
+                          {fmtMetric(r?.[k])}
                         </button>
                       </td>
                     ))}
@@ -987,7 +1054,7 @@ export default function App() {
                 {activeTab === "linkedin" &&
                   LINKEDIN_COLUMNS.map((c) => (
                     <td key={c.key} className="linkedin-col">
-                      {li ? li[c.key] : currentLiSnapshot ? 0 : "—"}
+                      {fmtMetric(li ? li[c.key] : currentLiSnapshot ? 0 : undefined)}
                     </td>
                   ))}
                 {activeTab === "mdr" &&
@@ -1005,7 +1072,7 @@ export default function App() {
                           })
                         }
                       >
-                        {r ? r[k] : "…"}
+                        {fmtMetric(r?.[k])}
                       </button>
                     </td>
                   ))}
@@ -1024,7 +1091,7 @@ export default function App() {
                           })
                         }
                       >
-                        {r ? r[k] : "…"}
+                        {fmtMetric(r?.[k])}
                       </button>
                     </td>
                   ))}
@@ -1043,7 +1110,7 @@ export default function App() {
                           })
                       }
                     >
-                      {r ? r[k] : "…"}
+                      {fmtMetric(r?.[k])}
                     </button>
                   </td>
                 ))}

@@ -45,17 +45,28 @@ export function MetricMultiSelect({
     selected.size === 0
       ? defaultLabel
       : selected.size === 1
-      ? `Top accounts by: ${options.find((o) => selected.has(o.key))?.label}`
-      : `Top accounts by: ${selected.size} metrics combined`;
+      ? `Engagement: ${options.find((o) => selected.has(o.key))?.label}`
+      : `Engagement: ${selected.size} metrics`;
 
   return (
     <div className="col-filter" ref={ref}>
       <button
-        className={`week-select metric-multiselect-trigger${selected.size > 0 ? " active" : ""}`}
+        className="col-filter-trigger active"
         onClick={() => setOpen((o) => !o)}
         title="Pick one or more metrics to rank accounts by - combine as many as you want"
       >
-        {triggerLabel} <span className="col-filter-caret">▾</span>
+        {triggerLabel}
+        {selected.size > 0 && (
+          <span
+            className="filter-chip-x"
+            onClick={(e) => {
+              e.stopPropagation();
+              onChange(new Set());
+            }}
+          >
+            ×
+          </span>
+        )}
       </button>
       {open && (
         <div className="col-filter-menu metric-multiselect-menu">
