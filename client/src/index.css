@@ -82,7 +82,7 @@ body {
 .subtitle {
   margin: 0 0 20px;
   color: var(--text-2);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .header-actions {
@@ -98,7 +98,7 @@ body {
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text-2);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   transition: border-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
@@ -112,7 +112,7 @@ body {
 
 .help-content h4 {
   margin: 16px 0 6px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--accent-2);
 }
 
@@ -122,7 +122,7 @@ body {
 
 .help-content p {
   margin: 0 0 4px;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.6;
   color: var(--text);
 }
@@ -181,7 +181,7 @@ body {
   border: 1px solid var(--border);
   background: var(--surface-2);
   color: var(--text);
-  font-size: 13px;
+  font-size: 14px;
   transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 
@@ -199,18 +199,18 @@ body {
   border: 1px solid var(--border);
   background: var(--surface-2);
   color: var(--text);
-  font-size: 13px;
+  font-size: 14px;
   transition: border-color 150ms ease;
 }
 
 .loading-pill {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-2);
 }
 
 .error {
   color: #ff6b6b;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .link-btn {
@@ -225,7 +225,7 @@ body {
 
 .warning {
   color: var(--accent-amber, #d9a441);
-  font-size: 12px;
+  font-size: 13px;
   background: rgba(255, 199, 95, 0.1);
   border: 1px solid rgba(255, 199, 95, 0.25);
   border-radius: 10px;
@@ -245,7 +245,7 @@ body {
   width: 100%;
   border-collapse: collapse;
   background: var(--surface);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .detail-table {
@@ -259,7 +259,7 @@ body {
 .account-table td,
 .detail-table th,
 .detail-table td {
-  padding: 10px 14px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--border);
   text-align: left;
   white-space: nowrap;
@@ -268,7 +268,7 @@ body {
 .account-table th {
   color: var(--text-2);
   font-weight: 600;
-  font-size: 11px;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   background: var(--surface-2);
@@ -371,7 +371,7 @@ body {
   align-items: center;
   gap: 14px;
   margin-top: 16px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-2);
 }
 
@@ -468,7 +468,7 @@ body {
 }
 
 .modal-eyebrow {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -476,7 +476,7 @@ body {
 }
 
 .modal-badge {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   padding: 3px 10px;
   border-radius: 999px;
@@ -530,7 +530,7 @@ body {
 }
 
 .modal-summary {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-2);
   margin: -4px 0 10px;
 }
@@ -569,7 +569,7 @@ body {
   top: 50%;
   transform: translateY(-50%);
   color: var(--text-2);
-  font-size: 13px;
+  font-size: 14px;
   pointer-events: none;
 }
 
@@ -651,7 +651,7 @@ body {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 14px 16px;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.6;
   color: var(--text);
 }
@@ -688,7 +688,7 @@ body {
 
 .timeline-card-subtitle {
   margin-top: 3px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--accent-2);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -697,7 +697,7 @@ body {
 
 .timeline-card-caption {
   margin-top: 6px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-2);
   display: flex;
   align-items: center;
@@ -711,7 +711,7 @@ body {
 
 .timeline-pill {
   flex-shrink: 0;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   padding: 3px 10px;
   border-radius: 999px;
@@ -741,7 +741,7 @@ body {
 .badge-active,
 .badge-inactive {
   display: inline-block;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   padding: 3px 10px;
   border-radius: 999px;
@@ -765,13 +765,16 @@ body {
   cursor: default;
 }
 
-.cell-account,
-.cell-domain {
+.cell-account {
   max-width: 220px;
 }
 
+.cell-domain {
+  max-width: 190px;
+}
+
 .cell-owner {
-  max-width: 140px;
+  max-width: 160px;
 }
 
 /* Frozen left columns: Account + Domain stay put while the rest of the
@@ -790,46 +793,46 @@ thead .sticky-col {
 
 .sticky-col-1 {
   left: 0;
-  width: 200px;
-  min-width: 200px;
-  max-width: 200px;
+  width: 220px;
+  min-width: 220px;
+  max-width: 220px;
 }
 
 .sticky-col-2 {
-  left: 200px;
-  width: 180px;
-  min-width: 180px;
-  max-width: 180px;
+  left: 220px;
+  width: 190px;
+  min-width: 190px;
+  max-width: 190px;
 }
 
 .sticky-col-3 {
-  left: 380px;
-  width: 140px;
-  min-width: 140px;
-  max-width: 140px;
+  left: 410px;
+  width: 160px;
+  min-width: 160px;
+  max-width: 160px;
 }
 
 .sticky-col-4 {
-  left: 520px;
-  width: 76px;
-  min-width: 76px;
-  max-width: 76px;
+  left: 570px;
+  width: 94px;
+  min-width: 94px;
+  max-width: 94px;
   text-align: center;
 }
 
 .sticky-col-5 {
-  left: 596px;
-  width: 76px;
-  min-width: 76px;
-  max-width: 76px;
+  left: 664px;
+  width: 94px;
+  min-width: 94px;
+  max-width: 94px;
   text-align: center;
 }
 
 .sticky-col-6 {
-  left: 672px;
-  width: 100px;
-  min-width: 100px;
-  max-width: 100px;
+  left: 758px;
+  width: 136px;
+  min-width: 136px;
+  max-width: 136px;
   text-align: center;
   border-right: 1px solid var(--border);
 }
@@ -840,7 +843,7 @@ thead .sticky-col {
   padding: 3px 8px;
   border-radius: 999px;
   font-weight: 700;
-  font-size: 11px;
+  font-size: 12px;
   border: none;
   cursor: pointer;
   font-family: inherit;
@@ -877,7 +880,7 @@ thead .sticky-col {
   padding: 3px 8px;
   border-radius: 999px;
   font-weight: 700;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .score-high {
@@ -937,7 +940,7 @@ thead .sticky-col {
   padding: 6px 10px;
   box-shadow: var(--shadow);
   white-space: nowrap;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text);
   z-index: 30;
   user-select: text;
@@ -959,7 +962,7 @@ thead .sticky-col {
   border: 1px solid var(--border);
   background: var(--surface-2);
   color: var(--text);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   transition: border-color 150ms ease;
 }
@@ -981,7 +984,7 @@ thead .sticky-col {
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  font-size: 11px;
+  font-size: 12px;
   padding-top: 8px;
   padding-bottom: 8px;
   box-shadow: inset 0 -3px 0 0 var(--group-color);
@@ -1041,7 +1044,7 @@ thead .sticky-col {
   border: none;
   color: var(--text-2);
   font-weight: 600;
-  font-size: 12px;
+  font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.03em;
   cursor: pointer;
@@ -1055,7 +1058,7 @@ thead .sticky-col {
 }
 
 .col-filter-caret {
-  font-size: 10px;
+  font-size: 11px;
 }
 
 @keyframes menu-in {
@@ -1098,7 +1101,7 @@ thead .sticky-col {
 
 .col-filter-actions button {
   flex: 1;
-  font-size: 11px;
+  font-size: 12px;
   padding: 5px 6px;
   border-radius: 8px;
   border: 1px solid var(--border);
@@ -1122,7 +1125,7 @@ thead .sticky-col {
   align-items: center;
   gap: 8px;
   padding: 6px 8px;
-  font-size: 13px;
+  font-size: 14px;
   border-radius: 8px;
   cursor: pointer;
   transition: background-color 120ms ease;
@@ -1148,7 +1151,7 @@ thead .sticky-col {
 
 .col-filter-group-label {
   padding: 8px 8px 2px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -1162,6 +1165,16 @@ thead .sticky-col {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 10px;
   margin-bottom: 14px;
+}
+
+/* Only the Factor Score split card remains - let it size to its content
+   instead of stretching edge-to-edge like a full multi-card grid would. */
+.kpi-strip-solo {
+  display: block;
+}
+
+.kpi-strip-solo .kpi-card {
+  display: inline-block;
 }
 
 .kpi-card {
@@ -1200,7 +1213,7 @@ thead .sticky-col {
 
 .kpi-label {
   margin-top: 4px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-2);
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -1212,7 +1225,7 @@ thead .sticky-col {
   border: 1px solid var(--border);
   background: var(--surface-2);
   color: var(--text-2);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   transition: border-color 150ms ease, color 150ms ease;
@@ -1243,14 +1256,14 @@ thead .sticky-col {
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text-2);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   cursor: pointer;
   transition: border-color 150ms ease, color 150ms ease, background 150ms ease;
 }
 
 .group-tab-count {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   padding: 1px 7px;
   border-radius: 999px;
@@ -1308,41 +1321,59 @@ thead .sticky-col {
 .spike-banner {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 14px;
   flex-wrap: wrap;
   width: 100%;
   text-align: left;
   font: inherit;
-  font-size: 13px;
+  font-size: 16px;
   color: var(--text-2);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 10px 14px;
-  margin-bottom: 14px;
+  border-radius: 14px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
   cursor: pointer;
-  transition: border-color 150ms ease, background 150ms ease;
+  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
 }
 
 .spike-banner:hover {
   border-color: var(--accent);
+  transform: translateY(-1px);
 }
 
+/* Deliberately styled very differently from every other element on the
+   dashboard - a bold, impossible-to-miss alert strip, not another quiet
+   toolbar control, since the whole point is that someone opening the
+   dashboard first thing in the morning sees this before anything else. */
 .spike-banner-active {
-  color: #ff5a5a;
-  background: rgba(255, 90, 90, 0.08);
-  border-color: rgba(255, 90, 90, 0.35);
-  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(90deg, #ff5a5a 0%, #ff8a3d 100%);
+  border: none;
+  font-weight: 800;
+  font-size: 17px;
+  padding: 18px 22px;
+  box-shadow: 0 6px 24px rgba(255, 90, 90, 0.35);
+}
+
+.spike-banner-active:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(255, 90, 90, 0.45);
 }
 
 .spike-banner-sep {
-  opacity: 0.5;
+  opacity: 0.6;
 }
 
 .spike-banner-cta {
   margin-left: auto;
-  font-weight: 700;
+  font-weight: 800;
   color: var(--accent);
+}
+
+.spike-banner-active .spike-banner-cta {
+  color: #fff;
+  text-decoration: underline;
 }
 
 .spike-date-row {
@@ -1350,12 +1381,12 @@ thead .sticky-col {
   align-items: center;
   gap: 10px;
   margin-bottom: 12px;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .spike-group-title {
   margin: 18px 0 8px;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .spike-signals {
@@ -1363,7 +1394,7 @@ thead .sticky-col {
 }
 
 .spike-signals-label {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -1379,7 +1410,7 @@ thead .sticky-col {
 }
 
 .spike-signal-chip {
-  font-size: 11px;
+  font-size: 12px;
   padding: 2px 8px;
   border-radius: 999px;
   background: var(--surface-2);
@@ -1388,7 +1419,7 @@ thead .sticky-col {
 }
 
 .spike-signals-note {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-2);
   font-style: italic;
 }
