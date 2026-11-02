@@ -79,7 +79,12 @@ export function ColumnFilter({
           <div className="col-filter-list">
             {options.map((opt) => (
               <label key={opt} className="col-filter-option">
-                <input type="checkbox" checked={selected.has(opt)} onChange={() => toggle(opt)} />
+                <input
+                  type="checkbox"
+                  className="col-filter-checkbox"
+                  checked={selected.has(opt)}
+                  onChange={() => toggle(opt)}
+                />
                 {opt}
               </label>
             ))}

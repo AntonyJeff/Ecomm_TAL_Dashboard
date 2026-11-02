@@ -673,9 +673,14 @@ export default function App() {
             options={[
               {
                 value: "all" as const,
-                label: `All weeks (${monthOptions.find((m) => m.value === selectedMonth)?.label} total)`,
+                label: "All weeks",
+                sublabel: `${monthOptions.find((m) => m.value === selectedMonth)?.label} total`,
               },
-              ...weeks.map((w) => ({ value: w.week, label: `Week ${w.week} (${w.start} to ${w.end})` })),
+              ...weeks.map((w) => ({
+                value: w.week,
+                label: `Week ${w.week}`,
+                sublabel: `${w.start} to ${w.end}`,
+              })),
             ]}
           />
         </div>

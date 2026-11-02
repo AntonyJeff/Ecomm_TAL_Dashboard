@@ -81,7 +81,12 @@ export function MetricMultiSelect({
                   .filter((o) => o.group === group)
                   .map((o) => (
                     <label key={o.key} className="col-filter-option">
-                      <input type="checkbox" checked={selected.has(o.key)} onChange={() => toggle(o.key)} />
+                      <input
+                        type="checkbox"
+                        className="col-filter-checkbox"
+                        checked={selected.has(o.key)}
+                        onChange={() => toggle(o.key)}
+                      />
                       {o.label}
                     </label>
                   ))}

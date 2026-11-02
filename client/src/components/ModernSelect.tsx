@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from "react";
 export interface SelectOption<T extends string | number> {
   value: T;
   label: string;
+  /** Optional smaller, muted second line - e.g. a date range - instead of cramming it into the label itself. */
+  sublabel?: string;
 }
 
 /**
@@ -62,7 +64,10 @@ export function ModernSelect<T extends string | number>({
               }}
             >
               <span className="modern-select-check">{o.value === value ? "✓" : ""}</span>
-              {o.label}
+              <span className="modern-select-option-text">
+                <span className="modern-select-option-label">{o.label}</span>
+                {o.sublabel && <span className="modern-select-option-sublabel">{o.sublabel}</span>}
+              </span>
             </button>
           ))}
         </div>

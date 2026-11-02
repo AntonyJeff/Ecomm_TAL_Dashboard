@@ -1097,85 +1097,123 @@ thead .sticky-col {
   top: 100%;
   left: 0;
   z-index: 20;
-  margin-top: 6px;
+  margin-top: 8px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 14px;
   box-shadow: var(--shadow);
-  min-width: 180px;
-  max-height: 280px;
+  min-width: 210px;
+  max-height: 300px;
   display: flex;
   flex-direction: column;
   text-transform: none;
   letter-spacing: normal;
   font-weight: 400;
-  animation: menu-in 140ms ease-out;
+  padding: 6px;
+  animation: menu-in 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: top left;
 }
 
 .col-filter-actions {
   display: flex;
   gap: 6px;
-  padding: 8px;
+  padding: 4px 4px 8px;
+  margin-bottom: 4px;
   border-bottom: 1px solid var(--border);
 }
 
 .col-filter-actions button {
   flex: 1;
   font-size: 12px;
-  padding: 5px 6px;
-  border-radius: 8px;
+  font-weight: 600;
+  padding: 7px 10px;
+  border-radius: 999px;
   border: 1px solid var(--border);
   background: var(--surface-2);
-  color: var(--text);
+  color: var(--text-2);
   cursor: pointer;
-  transition: border-color 150ms ease;
+  transition: border-color 150ms ease, color 150ms ease, background-color 150ms ease;
 }
 
 .col-filter-actions button:hover {
   border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(255, 106, 61, 0.08);
 }
 
 .col-filter-list {
   overflow-y: auto;
-  padding: 6px 4px;
+  padding: 2px;
 }
 
 .col-filter-option {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  font-size: 14px;
-  border-radius: 8px;
+  gap: 10px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 10px;
   cursor: pointer;
-  transition: background-color 120ms ease;
+  transition: background-color 150ms ease, transform 100ms ease;
 }
 
 .col-filter-option:hover {
   background: rgba(255, 106, 61, 0.1);
+  transform: translateX(2px);
 }
 
-.metric-multiselect-trigger {
+/* Custom checkbox - a native checkbox's own default appearance clashes with
+   the rest of this dashboard's styling and can't be restyled consistently
+   across browsers otherwise. */
+.col-filter-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  border: 1.5px solid var(--border);
+  background: var(--surface-2);
   cursor: pointer;
+  position: relative;
+  transition: background-color 150ms ease, border-color 150ms ease, transform 100ms ease;
 }
 
-.metric-multiselect-trigger.active {
+.col-filter-checkbox:hover {
   border-color: var(--accent);
-  color: var(--accent-2);
+}
+
+.col-filter-checkbox:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+  transform: scale(1.05);
+}
+
+.col-filter-checkbox:checked::after {
+  content: "✓";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .metric-multiselect-menu {
-  min-width: 260px;
+  min-width: 270px;
   max-height: 360px;
 }
 
 .col-filter-group-label {
-  padding: 8px 8px 2px;
+  padding: 10px 10px 4px;
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-2);
+  letter-spacing: 0.06em;
+  color: var(--accent);
 }
 
 
@@ -1446,12 +1484,12 @@ thead .sticky-col {
 .modern-select-option {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
-  padding: 9px 10px;
+  padding: 10px;
   border: none;
   background: none;
-  border-radius: 9px;
+  border-radius: 10px;
   color: var(--text);
   font-size: 13px;
   text-align: left;
@@ -1467,7 +1505,28 @@ thead .sticky-col {
 
 .modern-select-option.selected {
   color: var(--accent);
+}
+
+.modern-select-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.modern-select-option-label {
+  font-weight: 600;
+}
+
+.modern-select-option.selected .modern-select-option-label {
   font-weight: 700;
+}
+
+/* The date range used to be crammed into the label itself in parentheses
+   ("Week 2 (2026-11-02 to 2026-11-08)") - now it's its own quieter line. */
+.modern-select-option-sublabel {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-2);
 }
 
 .modern-select-check {
