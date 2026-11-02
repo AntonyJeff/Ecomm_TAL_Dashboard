@@ -57,9 +57,9 @@ body {
 }
 
 .app {
-  max-width: 1280px;
+  max-width: 1600px;
   margin: 0 auto;
-  padding: 28px 24px 70px;
+  padding: 28px 32px 70px;
 }
 
 .app-header-row {
@@ -308,6 +308,62 @@ body {
 .metric-btn:disabled {
   color: var(--muted);
   cursor: default;
+}
+
+/* Website visit intent (from the Factors.ai scoring sheet) - a literal glow
+   around the website sessions number so it's impossible to miss at a glance,
+   scrolling or not. Fire (orange) for High intent, sun (gold) for Medium -
+   High always takes precedence when a session matches both. */
+@keyframes fire-glow {
+  0%, 100% {
+    box-shadow: 0 0 4px 1px rgba(255, 145, 0, 0.5), 0 0 1px rgba(255, 94, 0, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 9px 3px rgba(255, 145, 0, 0.75), 0 0 3px rgba(255, 94, 0, 0.85);
+  }
+}
+
+@keyframes sun-glow {
+  0%, 100% {
+    box-shadow: 0 0 4px 1px rgba(255, 199, 56, 0.45), 0 0 1px rgba(230, 170, 30, 0.55);
+  }
+  50% {
+    box-shadow: 0 0 8px 2px rgba(255, 199, 56, 0.7), 0 0 2px rgba(230, 170, 30, 0.8);
+  }
+}
+
+.metric-btn-fire {
+  color: #ff8a00;
+  background: rgba(255, 145, 0, 0.12);
+  animation: fire-glow 1.6s ease-in-out infinite;
+}
+
+.metric-btn-fire:hover:not(:disabled) {
+  background: rgba(255, 145, 0, 0.22);
+}
+
+.metric-btn-sun {
+  color: #e6c122;
+  background: rgba(255, 199, 56, 0.12);
+  animation: sun-glow 1.6s ease-in-out infinite;
+}
+
+.metric-btn-sun:hover:not(:disabled) {
+  background: rgba(255, 199, 56, 0.22);
+}
+
+.fire-icon {
+  margin-right: 3px;
+}
+
+.high-intent-text {
+  color: #ff8a00;
+  font-weight: 700;
+}
+
+.medium-intent-text {
+  color: #e6c122;
+  font-weight: 700;
 }
 
 .pager {
@@ -714,6 +770,10 @@ body {
   max-width: 220px;
 }
 
+.cell-owner {
+  max-width: 140px;
+}
+
 /* Frozen left columns: Account + Domain stay put while the rest of the
    table (touchpoints, LinkedIn) scrolls underneath horizontally - same
    pattern as a spreadsheet's frozen panes. */
@@ -744,11 +804,71 @@ thead .sticky-col {
 
 .sticky-col-3 {
   left: 380px;
+  width: 140px;
+  min-width: 140px;
+  max-width: 140px;
+}
+
+.sticky-col-4 {
+  left: 520px;
   width: 76px;
   min-width: 76px;
   max-width: 76px;
   text-align: center;
+}
+
+.sticky-col-5 {
+  left: 596px;
+  width: 76px;
+  min-width: 76px;
+  max-width: 76px;
+  text-align: center;
+}
+
+.sticky-col-6 {
+  left: 672px;
+  width: 100px;
+  min-width: 100px;
+  max-width: 100px;
+  text-align: center;
   border-right: 1px solid var(--border);
+}
+
+.factor-pill {
+  display: inline-block;
+  min-width: 60px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 11px;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.factor-hot {
+  background: rgba(255, 90, 90, 0.16);
+  color: #ff5a5a;
+}
+
+.factor-warm {
+  background: rgba(255, 170, 60, 0.16);
+  color: #ffaa3c;
+}
+
+.factor-cool {
+  background: rgba(90, 160, 255, 0.16);
+  color: #5aa0ff;
+}
+
+.factor-ice {
+  background: rgba(150, 190, 230, 0.16);
+  color: #96bee6;
+}
+
+.factor-unscored {
+  background: rgba(150, 150, 150, 0.14);
+  color: var(--text-muted, #888);
 }
 
 .score-pill {
@@ -852,40 +972,63 @@ thead .sticky-col {
   color: var(--text-2);
 }
 
-/* Three-way effort grouping: Marketing / MDR / Sales, each a visually
-   distinct section so leaders can tell at a glance which team drove which
-   number, instead of one undifferentiated wall of columns. */
+/* Four-way effort grouping: Marketing / MDR / SDR / Sales, each a visually
+   distinct, clearly colored section - a banner-style header per group plus a
+   faint matching tint down every cell in that section, so leaders can tell
+   at a glance which team drove which number without reading every label. */
 .group-header {
   text-align: center;
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  font-weight: 800;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   font-size: 11px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  box-shadow: inset 0 -3px 0 0 var(--group-color);
 }
 
 .group-header-marketing {
-  background: var(--surface-2);
-  color: var(--text-2);
+  --group-color: #8b7cf6;
+  background: rgba(139, 124, 246, 0.14);
+  color: #8b7cf6;
+  border-left: 2px solid var(--border);
 }
 
 .group-header-mdr {
-  background: rgba(255, 199, 95, 0.16);
-  color: var(--accent-amber, #e8b339);
+  --group-color: #e8b339;
+  background: rgba(232, 179, 57, 0.16);
+  color: #e8b339;
+  border-left: 2px solid var(--border);
+}
+
+.group-header-sdr {
+  --group-color: #2ecc9a;
+  background: rgba(46, 204, 154, 0.16);
+  color: #2ecc9a;
   border-left: 2px solid var(--border);
 }
 
 .group-header-sales {
+  --group-color: #4da3ff;
   background: rgba(77, 163, 255, 0.16);
-  color: var(--accent-blue, #4da3ff);
+  color: #4da3ff;
   border-left: 2px solid var(--border);
 }
 
+.group-col-marketing {
+  background: rgba(139, 124, 246, 0.04);
+}
+
 .group-col-mdr {
-  background: rgba(255, 199, 95, 0.05);
+  background: rgba(232, 179, 57, 0.06);
+}
+
+.group-col-sdr {
+  background: rgba(46, 204, 154, 0.06);
 }
 
 .group-col-sales {
-  background: rgba(77, 163, 255, 0.05);
+  background: rgba(77, 163, 255, 0.06);
 }
 
 .col-filter {

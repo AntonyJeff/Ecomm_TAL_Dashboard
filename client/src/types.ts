@@ -26,6 +26,8 @@ export interface EmailEvent {
   taskId: string;
   person: string;
   contactId: string;
+  /** Whether this touch was logged against a Contact or a Lead (e.g. a not-yet-converted event attendee) - see the Lead/Contact gap note in the server's touchpointEvents. */
+  personType: "Contact" | "Lead";
   campaign: string;
   date: string;
   sender: string | null;

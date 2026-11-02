@@ -251,3 +251,62 @@ export async function getLinkedinSnapshotRows(force = false): Promise<LinkedinSn
   linkedinCache = { rows, fetchedAt: Date.now() };
   return rows;
 }
+
+export interface FactorsScoreRow {
+  runDate: string; // YYYY-MM-DD, the calendar day this snapshot represents
+  accountId: string;
+  engagementLevel: string; // "Hot" | "Warm" | "Cool" | "Ice" | "" (not yet scored by Factors)
+  engagementScore: number | null;
+}
+
+let factorsScoreCache: { rows: FactorsScoreRow[]; fetchedAt: number } | null = null;
+const FACTORS_SCORE_CACHE_TTL_MS = 5 * 60 * 1000;
+
+/**
+ * Daily append-only history written by automation/factors_score_sync.py - one
+ * row per account per day it ran, never overwritten. This is what lets a
+ * past week permanently keep showing whatever Engagement Level was true as
+ * of that week, even after the live Salesforce field has since moved on.
+ */
+export async function getFactorsScoreRows(force = false): Promise<FactorsScoreRow[]> {
+  if (!force && factorsScoreCache && Date.now() - factorsScoreCache.fetchedAt < FACTORS_SCORE_CACHE_TTL_MS) {
+    return factorsScoreCache.rows;
+  }
+
+  const sheets = google.sheets({ version: "v4", auth: getAuth() });
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: ENGAGEMENT_SHEET_ID,
+    range: "Factors_Score!A1:O",
+  });
+
+  const values = res.data.values || [];
+  if (values.length === 0) {
+    factorsScoreCache = { rows: [], fetchedAt: Date.now() };
+    return [];
+  }
+
+  const headers = values[0].map(normalizeHeader);
+  const idx = {
+    runDate: headers.findIndex((h) => h === "rundate"),
+    accountId: headers.findIndex((h) => h === "accountid"),
+    engagementLevel: headers.findIndex((h) => h === "engagementlevel"),
+    engagementScore: headers.findIndex((h) => h === "factorsengagementscore"),
+  };
+
+  const rows: FactorsScoreRow[] = values
+    .slice(1)
+    .filter((r) => r.length > 0 && r[idx.runDate] && r[idx.accountId])
+    .map((r) => {
+      const rawScore = idx.engagementScore >= 0 ? r[idx.engagementScore] : "";
+      const parsed = Number(rawScore);
+      return {
+        runDate: r[idx.runDate],
+        accountId: r[idx.accountId],
+        engagementLevel: idx.engagementLevel >= 0 ? r[idx.engagementLevel] ?? "" : "",
+        engagementScore: rawScore && Number.isFinite(parsed) ? parsed : null,
+      };
+    });
+
+  factorsScoreCache = { rows, fetchedAt: Date.now() };
+  return rows;
+}

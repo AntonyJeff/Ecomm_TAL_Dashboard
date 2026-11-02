@@ -21,7 +21,13 @@ export function WebsiteSessionsModal({
   range: DateRange;
   onClose: () => void;
 }) {
-  const [data, setData] = useState<{ sessionCount: number; totalDurationSec: number; events: WebsiteSessionEvent[] } | null>(null);
+  const [data, setData] = useState<{
+    sessionCount: number;
+    totalDurationSec: number;
+    highIntentCount: number;
+    mediumIntentCount: number;
+    events: WebsiteSessionEvent[];
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
@@ -62,6 +68,18 @@ export function WebsiteSessionsModal({
           <p className="modal-summary">
             {data.sessionCount} session{data.sessionCount === 1 ? "" : "s"} · total time on site:{" "}
             {formatDuration(data.totalDurationSec)}
+            {data.highIntentCount > 0 && (
+              <>
+                {" "}
+                · <span className="high-intent-text">🔥 {data.highIntentCount} high-intent</span>
+              </>
+            )}
+            {data.mediumIntentCount > 0 && (
+              <>
+                {" "}
+                · <span className="medium-intent-text">☀️ {data.mediumIntentCount} medium-intent</span>
+              </>
+            )}
           </p>
           <div className="modal-search-wrap">
             <span className="modal-search-icon">🔍</span>
@@ -78,10 +96,17 @@ export function WebsiteSessionsModal({
               {filtered.map((e, i) => (
                 <TimelineItem
                   key={i}
-                  icon="🌐"
+                  icon={e.highIntent ? "🔥" : e.mediumIntent ? "☀️" : "🌐"}
                   title={formatDuration(e.durationSec)}
                   subtitle={`${e.firstPageUrl || "—"} → ${e.latestPageUrl || "—"}`}
                   pill={e.date}
+                  caption={
+                    e.highIntent ? (
+                      <span className="high-intent-text">High-intent page visited</span>
+                    ) : e.mediumIntent ? (
+                      <span className="medium-intent-text">Medium-intent page visited</span>
+                    ) : undefined
+                  }
                 />
               ))}
             </Timeline>

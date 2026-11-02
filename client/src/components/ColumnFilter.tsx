@@ -30,6 +30,15 @@ export function ColumnFilter({
 
   const active = selected.size < options.length;
 
+  // Shows exactly what's applied right in the trigger, not just "is a
+  // filter active" - picking one or two values names them; picking more
+  // just gives a count, since listing them all would overflow the button.
+  function selectionSummary(): string {
+    if (selected.size === 0) return "None";
+    if (selected.size <= 2) return Array.from(selected).join(", ");
+    return `${selected.size} selected`;
+  }
+
   function toggle(value: string) {
     const next = new Set(selected);
     if (next.has(value)) next.delete(value);
@@ -44,7 +53,7 @@ export function ColumnFilter({
         onClick={() => setOpen((o) => !o)}
         title={`Filter ${label}`}
       >
-        {label} <span className="col-filter-caret">▾</span>
+        {active ? `${label}: ${selectionSummary()}` : label} <span className="col-filter-caret">▾</span>
       </button>
       {open && (
         <div className="col-filter-menu">

@@ -4,9 +4,11 @@ import {
   getDomainToAccountId,
   getWebsiteSessions,
   getLinkedinSnapshotRows,
+  getFactorsScoreRows,
   normalizeDomain,
 } from "../googleSheets.js";
 import { soqlQuery, getInstanceUrl, chunk, mapWithConcurrency } from "../salesforce.js";
+import { isHighIntentUrl, isMediumIntentUrl } from "../intentPages.js";
 
 export const accountsRouter = Router();
 
@@ -20,12 +22,13 @@ function esc(id: string): string {
 }
 
 /**
- * Named individuals on the MDR team - confirmed by the user. Every Outreach.io
- * touchpoint (email out/opened/clicked/replied, call answered) is attributed
- * to whichever Salesforce User owns the Task. If that owner is one of these
- * people, the touch counts as "MDR"; any other owner (any other rep running
- * an Outreach.io cadence) counts as "Sales" instead. Same subject patterns,
- * same data source - only the owner decides which bucket it lands in.
+ * Named individuals on the MDR and SDR teams - confirmed by the user. Every
+ * Outreach.io touchpoint (email out/opened/clicked/replied, call answered) is
+ * attributed to whichever Salesforce User owns the Task. If that owner is a
+ * named MDR, the touch counts as "MDR"; if a named SDR, it counts as "SDR";
+ * every other owner (any other rep running an Outreach.io cadence) falls
+ * under "Sales". Same subject patterns, same data source - only the owner
+ * decides which of the three buckets it lands in.
  */
 const MDR_OWNER_NAMES = new Set([
   "Neha Bohra",
@@ -36,51 +39,139 @@ const MDR_OWNER_NAMES = new Set([
   "Atharva Jadhav",
 ]);
 
+const SDR_OWNER_NAMES = new Set([
+  "Nitin Kumar Sharma",
+  "Vivek Khaire",
+  "Meghna Bhowmick",
+  "Susmit Bhele",
+  "Zeenat Mayet",
+  "Mrunal Parkhe",
+  "Arete Xavier",
+  "Erwin",
+  "Abhishek Joshi",
+  "Sahil Chaba",
+  "Aishwarya Kadam",
+  "Pritish Mitra",
+  "Trishala Kapira",
+  "Jinkal Katira",
+  "Nitin Jain",
+  "Dhruv Chauhan",
+  "Isra Taleb",
+  "Vihal Mallah",
+  "Pranavv Dasgaonkarr",
+  "Ayaan Belim",
+  "Shivam Vaidya",
+  "Quinton Noronha",
+  "Nikhil Vidhate",
+  "Kashif Irfan",
+  "Manvi Sinha",
+  "Sheryll Sharma",
+  "Sounak Das",
+  "Hardik Ojha",
+  "Adarsh Kumbar",
+  "Shefali Rani",
+  "Sushma Hosamani",
+]);
+
+/** One Subject-prefix match rule, optionally also requiring a specific TaskSubtype (needed where the bare prefix alone would collide with an unrelated Task family - see "whatsapp" below). */
+interface SubjectPattern {
+  subjectPrefix: string;
+  taskSubtype?: "Call";
+}
+
 /**
  * Every Salesforce Task-based touchpoint the dashboard tracks, grouped into
- * three sources shown as separate sections in the UI:
+ * four sources shown as separate sections in the UI:
  *
  *  - "marketing": bulk campaign automation (Subject prefix below), dated by
  *    ActivityDate (the real event day - CreatedDate is just when the sync
  *    landed, which runs ~1 day behind for both email and WhatsApp).
- *  - "mdr" / "sales": Outreach.io (the 1:1 sales engagement tool), split by
- *    Task Owner per MDR_OWNER_NAMES above. Confirmed via direct Salesforce
- *    inspection: Outreach syncs Task Subject lines like
- *    "[Outreach] [Email] [Opened] <actual subject>" and
- *    "[Outreach] Call Answered [Outbound]". Email body is only available for
- *    "Out" (sent) and "In" (reply) - "Opened"/"Clicked" are tracking pings
- *    with no body attached. For calls, only "Answered" (an actual connected
- *    conversation) counts - the other dispositions (No Answer, Voicemail,
- *    Busy, etc.) are attempts, not engagement, so they're intentionally not
- *    tracked. GTM Buddy's separate "GTM Buddy - Email sent: ..." tasks are a
- *    different tool entirely and are intentionally excluded - they simply
- *    don't match any of these Subject patterns.
+ *  - "mdr" / "sdr" / "sales": Outreach.io (the 1:1 sales engagement tool) PLUS
+ *    manually-logged calls (see below), split by Task Owner per
+ *    MDR_OWNER_NAMES / SDR_OWNER_NAMES above - any owner in neither list
+ *    falls under "sales". Confirmed via direct Salesforce inspection:
+ *    Outreach syncs Task Subject lines like "[Outreach] [Email] [Opened]
+ *    <actual subject>" and "[Outreach] Call Answered [Outbound]". Email body
+ *    is only available for "Out" (sent) and "In" (reply) - "Opened"/
+ *    "Clicked" are tracking pings with no body attached. GTM Buddy's separate
+ *    "GTM Buddy - Email sent: ..." tasks are a different tool entirely and
+ *    are intentionally excluded - they simply don't match any of these
+ *    Subject patterns.
  *
- * The mdr and sales variants of each touchpoint intentionally SHARE the same
- * subject prefix (owner decides which one matches - see computeRanks below).
+ * The mdr/sdr/sales variants of each touchpoint intentionally SHARE the same
+ * subject pattern(s) (owner decides which one matches - see computeRanks
+ * below).
+ *
+ * CALLS - two real call-logging systems feed this, confirmed directly
+ * against live data (user-reported: a lead's call history wasn't showing up
+ * at all):
+ *  1. Outreach.io's own dialer, which only syncs a Task when the call
+ *     actually connected ("[Outreach] Call Answered [Outbound]") - every
+ *     other disposition (No Answer, Voicemail, Busy, etc.) is an attempt,
+ *     not engagement, and is intentionally excluded.
+ *  2. Zoom Phone calls and personal-WhatsApp calls, which reps log MANUALLY
+ *     in Salesforce (no disposition field at all - Outreach's own dialer is
+ *     not involved). Subject is exactly "Outbound to <phone number>" for a
+ *     Zoom Phone call, or just "WhatsApp" (case varies: WhatsApp/Whatsapp/
+ *     whatsapp/WhatsAPP all seen) when the rep called from their personal
+ *     WhatsApp number instead. A bare "Call" subject (no number, no
+ *     "WhatsApp") is just a duplicate manual confirmation of the same
+ *     logged-elsewhere call, not a separate event, and is intentionally
+ *     excluded to avoid double counting.
+ * Both Zoom Phone and Outreach-answered calls count toward the same "Calls"
+ * touchpoint (two different tools recording the same real-world action: a
+ * phone call that connected); the WhatsApp calls are tracked as their own
+ * separate touchpoint since it's a genuinely different channel from a phone
+ * call. The TaskSubtype='Call' guard on "Outbound to"/"whatsapp" is required
+ * because "whatsapp" alone would otherwise also match the UNRELATED
+ * marketing automation Tasks (Whatsapp_read/replied/clicked, TaskSubtype
+ * 'Task') - confirmed live: 50,772 such collisions with no guard, zero with it.
  */
+const OUTREACH_CALL_ANSWERED: SubjectPattern = { subjectPrefix: "[Outreach] Call Answered [Outbound]", taskSubtype: "Call" };
+const MANUAL_OUTBOUND_CALL: SubjectPattern = { subjectPrefix: "Outbound to", taskSubtype: "Call" };
+const MANUAL_WHATSAPP_CALL: SubjectPattern = { subjectPrefix: "whatsapp", taskSubtype: "Call" };
+
 export const TOUCHPOINTS = {
-  emailOpens: { prefix: "Email_open%", label: "Email opens", source: "marketing" as const },
-  emailClicks: { prefix: "Email_click%", label: "Email clicks", source: "marketing" as const },
-  waRead: { prefix: "Whatsapp_read%", label: "WhatsApp read", source: "marketing" as const },
-  waReplied: { prefix: "Whatsapp_replied%", label: "WhatsApp replied", source: "marketing" as const },
-  waClicked: { prefix: "Whatsapp_clicked%", label: "WhatsApp clicked", source: "marketing" as const },
+  emailOpens: { patterns: [{ subjectPrefix: "Email_open" }], label: "Email opens", source: "marketing" as const },
+  emailClicks: { patterns: [{ subjectPrefix: "Email_click" }], label: "Email clicks", source: "marketing" as const },
+  waRead: { patterns: [{ subjectPrefix: "Whatsapp_read" }], label: "WhatsApp read", source: "marketing" as const },
+  waReplied: { patterns: [{ subjectPrefix: "Whatsapp_replied" }], label: "WhatsApp replied", source: "marketing" as const },
+  waClicked: { patterns: [{ subjectPrefix: "Whatsapp_clicked" }], label: "WhatsApp clicked", source: "marketing" as const },
 
-  mdrEmailOut: { prefix: "[Outreach] [Email] [Out]%", label: "MDR email out", source: "mdr" as const },
-  mdrEmailOpened: { prefix: "[Outreach] [Email] [Opened]%", label: "MDR email opened", source: "mdr" as const },
-  mdrEmailClicked: { prefix: "[Outreach] [Email] [Clicked]%", label: "MDR email clicked", source: "mdr" as const },
-  mdrEmailReplied: { prefix: "[Outreach] [Email] [In]%", label: "MDR email replied", source: "mdr" as const },
-  mdrCalls: { prefix: "[Outreach] Call Answered [Outbound]%", label: "MDR calls", source: "mdr" as const },
+  mdrEmailOut: { patterns: [{ subjectPrefix: "[Outreach] [Email] [Out]" }], label: "MDR email out", source: "mdr" as const },
+  mdrEmailOpened: { patterns: [{ subjectPrefix: "[Outreach] [Email] [Opened]" }], label: "MDR email opened", source: "mdr" as const },
+  mdrEmailClicked: { patterns: [{ subjectPrefix: "[Outreach] [Email] [Clicked]" }], label: "MDR email clicked", source: "mdr" as const },
+  mdrEmailReplied: { patterns: [{ subjectPrefix: "[Outreach] [Email] [In]" }], label: "MDR email replied", source: "mdr" as const },
+  mdrCalls: { patterns: [OUTREACH_CALL_ANSWERED, MANUAL_OUTBOUND_CALL], label: "MDR calls", source: "mdr" as const },
+  mdrWaCalls: { patterns: [MANUAL_WHATSAPP_CALL], label: "MDR WhatsApp calls", source: "mdr" as const },
 
-  salesEmailOut: { prefix: "[Outreach] [Email] [Out]%", label: "Sales email out", source: "sales" as const },
-  salesEmailOpened: { prefix: "[Outreach] [Email] [Opened]%", label: "Sales email opened", source: "sales" as const },
-  salesEmailClicked: { prefix: "[Outreach] [Email] [Clicked]%", label: "Sales email clicked", source: "sales" as const },
-  salesEmailReplied: { prefix: "[Outreach] [Email] [In]%", label: "Sales email replied", source: "sales" as const },
-  salesCalls: { prefix: "[Outreach] Call Answered [Outbound]%", label: "Sales calls", source: "sales" as const },
+  sdrEmailOut: { patterns: [{ subjectPrefix: "[Outreach] [Email] [Out]" }], label: "SDR email out", source: "sdr" as const },
+  sdrEmailOpened: { patterns: [{ subjectPrefix: "[Outreach] [Email] [Opened]" }], label: "SDR email opened", source: "sdr" as const },
+  sdrEmailClicked: { patterns: [{ subjectPrefix: "[Outreach] [Email] [Clicked]" }], label: "SDR email clicked", source: "sdr" as const },
+  sdrEmailReplied: { patterns: [{ subjectPrefix: "[Outreach] [Email] [In]" }], label: "SDR email replied", source: "sdr" as const },
+  sdrCalls: { patterns: [OUTREACH_CALL_ANSWERED, MANUAL_OUTBOUND_CALL], label: "SDR calls", source: "sdr" as const },
+  sdrWaCalls: { patterns: [MANUAL_WHATSAPP_CALL], label: "SDR WhatsApp calls", source: "sdr" as const },
+
+  salesEmailOut: { patterns: [{ subjectPrefix: "[Outreach] [Email] [Out]" }], label: "Sales email out", source: "sales" as const },
+  salesEmailOpened: { patterns: [{ subjectPrefix: "[Outreach] [Email] [Opened]" }], label: "Sales email opened", source: "sales" as const },
+  salesEmailClicked: { patterns: [{ subjectPrefix: "[Outreach] [Email] [Clicked]" }], label: "Sales email clicked", source: "sales" as const },
+  salesEmailReplied: { patterns: [{ subjectPrefix: "[Outreach] [Email] [In]" }], label: "Sales email replied", source: "sales" as const },
+  salesCalls: { patterns: [OUTREACH_CALL_ANSWERED, MANUAL_OUTBOUND_CALL], label: "Sales calls", source: "sales" as const },
+  salesWaCalls: { patterns: [MANUAL_WHATSAPP_CALL], label: "Sales WhatsApp calls", source: "sales" as const },
 } as const;
 
 export type TouchpointKey = keyof typeof TOUCHPOINTS;
 const TOUCHPOINT_KEYS = Object.keys(TOUCHPOINTS) as TouchpointKey[];
+
+/** Builds a single parenthesized SOQL OR-term for one pattern, bundling its TaskSubtype guard (if any) into the same term. */
+function patternClause(p: SubjectPattern): string {
+  const subjectCond = `Subject LIKE '${p.subjectPrefix}%'`;
+  return p.taskSubtype ? `(${subjectCond} AND TaskSubtype = '${p.taskSubtype}')` : subjectCond;
+}
+
+function patternMatches(subject: string, taskSubtype: string | null, p: SubjectPattern): boolean {
+  return subject.startsWith(p.subjectPrefix) && (!p.taskSubtype || taskSubtype === p.taskSubtype);
+}
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -149,10 +240,14 @@ accountsRouter.get("/contact-counts", async (req, res) => {
   }
 });
 
-export type RankEntry = Record<TouchpointKey, number> & { websiteSessions: number };
+export type RankEntry = Record<TouchpointKey, number> & {
+  websiteSessions: number;
+  highIntentSessions: number;
+  mediumIntentSessions: number;
+};
 
 function emptyRankEntry(): RankEntry {
-  const e = { websiteSessions: 0 } as RankEntry;
+  const e = { websiteSessions: 0, highIntentSessions: 0, mediumIntentSessions: 0 } as RankEntry;
   for (const k of TOUCHPOINT_KEYS) e[k] = 0;
   return e;
 }
@@ -187,17 +282,82 @@ async function getContactToAccountMap(): Promise<{ contactToAccount: Map<string,
   return contactMapCache;
 }
 
-const TOUCHPOINT_PREFIXES = TOUCHPOINT_KEYS.map((key) => ({
-  key,
-  prefix: TOUCHPOINTS[key].prefix.replace(/%$/, ""),
-  source: TOUCHPOINTS[key].source,
-}));
+/**
+ * A real, confirmed gap: a meaningful slice of MDR/SDR/Sales activity
+ * (Outreach.io calls and emails) gets logged against Salesforce LEADS, not
+ * Contacts - e.g. a webinar/event attendee who hasn't been converted to a
+ * Contact yet, but is still being worked by MDR/SDR. Those Tasks' WhoId
+ * points at a Lead (00Q... prefix), which the Contact-only map above can
+ * never resolve, so every one of those touches was silently dropped from
+ * the Score and every touchpoint column - confirmed directly against live
+ * data (lead 00Qfw00000UMRQ5EAP: 22 calls + 17 emails, zero attribution).
+ *
+ * Leads don't have a standard Account lookup pre-conversion, but this org's
+ * Lead object carries two custom fields that already hold the target
+ * Account's Id: Company_Account_ID__c (populated on ~53% of all leads) and
+ * Account__c (an actual Account reference, ~15% populated). Confirmed via a
+ * live sample that whenever both are populated on the same Lead they always
+ * agree - so Company_Account_ID__c is used first for its much wider
+ * coverage, falling back to Account__c only when the former is blank.
+ */
+let leadMapCache: { computedAt: number; leadToAccount: Map<string, string> } | null = null;
+const LEAD_MAP_TTL_MS = 10 * 60 * 1000;
+
+async function getLeadToAccountMap(): Promise<{ leadToAccount: Map<string, string> }> {
+  if (leadMapCache && Date.now() - leadMapCache.computedAt < LEAD_MAP_TTL_MS) {
+    return leadMapCache;
+  }
+
+  const accounts = await getAccountsFromSheet();
+  const accountIdSet = new Set(accounts.map((a) => a.accountId));
+  const accountIds = accounts.map((a) => a.accountId);
+
+  const leadToAccount = new Map<string, string>();
+  const leadChunks = await mapWithConcurrency(chunk(accountIds, 150), 8, async (idBatch) => {
+    const inList = idBatch.map((id) => `'${esc(id)}'`).join(",");
+    return soqlQuery<{ Id: string; Company_Account_ID__c: string | null; Account__c: string | null }>(
+      `SELECT Id, Company_Account_ID__c, Account__c FROM Lead WHERE Company_Account_ID__c IN (${inList}) OR Account__c IN (${inList})`
+    );
+  });
+  for (const rows of leadChunks) {
+    for (const l of rows) {
+      const accId =
+        l.Company_Account_ID__c && accountIdSet.has(l.Company_Account_ID__c)
+          ? l.Company_Account_ID__c
+          : l.Account__c && accountIdSet.has(l.Account__c)
+          ? l.Account__c
+          : null;
+      if (accId) leadToAccount.set(l.Id, accId);
+    }
+  }
+
+  leadMapCache = { computedAt: Date.now(), leadToAccount };
+  return leadMapCache;
+}
+
+/** Every Task's WhoId is either a Contact or a Lead - this merges both maps into one lookup so callers don't need to care which. */
+async function getWhoIdToAccountMap(): Promise<Map<string, string>> {
+  const [{ contactToAccount }, { leadToAccount }] = await Promise.all([
+    getContactToAccountMap(),
+    getLeadToAccountMap(),
+  ]);
+  const merged = new Map(contactToAccount);
+  for (const [whoId, accId] of leadToAccount) merged.set(whoId, accId);
+  return merged;
+}
+
+// Flattened (key, pattern) pairs - a key like mdrCalls contributes one entry
+// per pattern it accepts (Outreach-answered AND manually-logged outbound
+// both count toward it), so a task can appear once per pattern it matches.
+const TOUCHPOINT_PATTERNS = TOUCHPOINT_KEYS.flatMap((key) =>
+  TOUCHPOINTS[key].patterns.map((p) => ({ key, ...p, source: TOUCHPOINTS[key].source }))
+);
 
 async function computeRanks(start: string, end: string): Promise<Record<string, RankEntry>> {
   const dateClause = dateRangeClause({ start, end });
-  const [accounts, { contactToAccount }] = await Promise.all([
+  const [accounts, whoIdToAccount] = await Promise.all([
     getAccountsFromSheet(),
-    getContactToAccountMap(),
+    getWhoIdToAccountMap(),
   ]);
 
   const ranks: Record<string, RankEntry> = {};
@@ -209,30 +369,37 @@ async function computeRanks(start: string, end: string): Promise<Record<string, 
   // (~15k-27k rows) takes 3-5s as ONE query (SOQL pagination handles the
   // row volume automatically), versus 6s+ for the old chunked version doing
   // 50+ small queries - fewer, bigger round trips beats many small ones here.
-  // Rows for contacts outside our 5,555 TAL accounts are simply discarded
-  // below via the contactToAccount lookup. Owner.Name is needed to split
-  // Outreach.io touches into MDR vs Sales (see TOUCHPOINTS doc comment).
-  const uniquePrefixes = Array.from(new Set(TOUCHPOINT_PREFIXES.map((p) => p.prefix)));
-  const subjectOr = uniquePrefixes.map((p) => `Subject LIKE '${p}%'`).join(" OR ");
-  const tasks = await soqlQuery<{ WhoId: string; Subject: string; Owner: { Name: string } | null }>(
-    `SELECT WhoId, Subject, Owner.Name FROM Task WHERE (${subjectOr})${dateClause}`
-  );
+  // Rows for contacts/leads outside our 5,555 TAL accounts are simply
+  // discarded below via the whoIdToAccount lookup. WhoId resolves against
+  // EITHER a Contact or a Lead (see getWhoIdToAccountMap) - a real,
+  // confirmed gap was that Lead-owned touches were silently dropped
+  // entirely when only Contacts were checked. Owner.Name is needed to split
+  // Outreach.io touches into MDR vs SDR vs Sales (see TOUCHPOINTS doc comment).
+  const uniqueClauses = Array.from(new Set(TOUCHPOINT_PATTERNS.map((p) => patternClause(p))));
+  const subjectOr = uniqueClauses.join(" OR ");
+  const tasks = await soqlQuery<{
+    WhoId: string;
+    Subject: string;
+    TaskSubtype: string | null;
+    Owner: { Name: string } | null;
+  }>(`SELECT WhoId, Subject, TaskSubtype, Owner.Name FROM Task WHERE (${subjectOr})${dateClause}`);
 
   for (const t of tasks) {
-    const accId = contactToAccount.get(t.WhoId);
+    const accId = whoIdToAccount.get(t.WhoId);
     if (!accId || !ranks[accId]) continue;
 
-    const matches = TOUCHPOINT_PREFIXES.filter((p) => t.Subject.startsWith(p.prefix));
+    const matches = TOUCHPOINT_PATTERNS.filter((p) => patternMatches(t.Subject, t.TaskSubtype, p));
     if (matches.length === 0) continue;
 
     if (matches.length === 1) {
       // Marketing automation - prefix alone identifies the touchpoint.
       ranks[accId][matches[0].key] += 1;
     } else {
-      // Outreach.io mdr/sales pair sharing a prefix - the Task's owner
+      // Outreach.io mdr/sdr/sales trio sharing a prefix - the Task's owner
       // decides which bucket this touch belongs in.
-      const isMdr = MDR_OWNER_NAMES.has(t.Owner?.Name || "");
-      const chosen = matches.find((m) => m.source === (isMdr ? "mdr" : "sales"));
+      const ownerName = t.Owner?.Name || "";
+      const source = MDR_OWNER_NAMES.has(ownerName) ? "mdr" : SDR_OWNER_NAMES.has(ownerName) ? "sdr" : "sales";
+      const chosen = matches.find((m) => m.source === source);
       if (chosen) ranks[accId][chosen.key] += 1;
     }
   }
@@ -246,7 +413,15 @@ async function computeRanks(start: string, end: string): Promise<Record<string, 
   for (const s of sessions) {
     if (s.eventDate < start || s.eventDate > end) continue;
     const accId = domainToAccount.get(s.domain);
-    if (accId && ranks[accId]) ranks[accId].websiteSessions += 1;
+    if (!accId || !ranks[accId]) continue;
+    ranks[accId].websiteSessions += 1;
+    // High takes precedence over Medium when a session's entry/exit pages
+    // happen to match both tiers - mirrors the fire-over-sun display rule.
+    if (isHighIntentUrl(s.firstPageUrl) || isHighIntentUrl(s.latestPageUrl)) {
+      ranks[accId].highIntentSessions += 1;
+    } else if (isMediumIntentUrl(s.firstPageUrl) || isMediumIntentUrl(s.latestPageUrl)) {
+      ranks[accId].mediumIntentSessions += 1;
+    }
   }
 
   return ranks;
@@ -426,6 +601,143 @@ accountsRouter.get("/linkedin-snapshots", async (req, res) => {
   }
 });
 
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+
+/**
+ * "Today" in IST, not UTC. This matters here specifically because the whole
+ * Factors.ai automation this feature depends on is designed around IST (the
+ * daily sync runs at 11:55 PM IST) - using UTC's calendar date would make
+ * the dashboard think it's still "yesterday" for the ~5.5 hours every
+ * evening where IST has already rolled into a new day but UTC hasn't
+ * (confirmed live: at 01:47 AM IST on Nov 2, UTC still read Nov 1 20:17,
+ * which silently served Nov 1's stale sheet data instead of going live).
+ */
+function todayIsoIST(): string {
+  return new Date(Date.now() + IST_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+interface FactorsSnapshot {
+  level: string;
+  score: number | null;
+}
+
+// Live current Engagement_Level__c / Factors_Engagement_Score__c for every
+// TAL account, straight from Salesforce - used ONLY for "today," since the
+// daily sheet snapshot for today doesn't exist until tonight's automation
+// run. Cached briefly so repeated page views in the same few minutes don't
+// re-scan all 5,555 accounts on every request.
+let liveFactorsCache: { computedAt: number; byAccount: Record<string, FactorsSnapshot> } | null = null;
+const LIVE_FACTORS_CACHE_TTL_MS = 5 * 60 * 1000;
+
+async function getLiveFactorsSnapshot(): Promise<Record<string, FactorsSnapshot>> {
+  if (liveFactorsCache && Date.now() - liveFactorsCache.computedAt < LIVE_FACTORS_CACHE_TTL_MS) {
+    return liveFactorsCache.byAccount;
+  }
+
+  const accounts = await getAccountsFromSheet();
+  const byAccount: Record<string, FactorsSnapshot> = {};
+
+  await mapWithConcurrency(chunk(accounts.map((a) => a.accountId), 300), 8, async (idBatch) => {
+    const idList = idBatch.map((id) => `'${esc(id)}'`).join(",");
+    const rows = await soqlQuery<{ Id: string; Engagement_Level__c: string | null; Factors_Engagement_Score__c: number | null }>(
+      `SELECT Id, Engagement_Level__c, Factors_Engagement_Score__c FROM Account WHERE Id IN (${idList})`
+    );
+    for (const r of rows) {
+      byAccount[r.Id] = { level: r.Engagement_Level__c || "", score: r.Factors_Engagement_Score__c ?? null };
+    }
+  });
+
+  liveFactorsCache = { computedAt: Date.now(), byAccount };
+  return byAccount;
+}
+
+/**
+ * Resolves the Factor Score every account should show for the given period:
+ *  - If the period has already fully elapsed (end < today), it's permanent
+ *    history - use whatever the daily sheet snapshot said as of that date,
+ *    and it will never change again, no matter how much later this is viewed.
+ *  - If the period includes today (end >= today, i.e. the current week),
+ *    show today's value - from the sheet if tonight's run has already
+ *    happened, otherwise LIVE from Salesforce, since the sheet simply has
+ *    nothing for today yet.
+ * This mirrors the "never retroactively rewrite a past week" rule already
+ * used for LinkedIn, just with a live fallback for the one day that hasn't
+ * been captured into history yet.
+ */
+async function resolveFactorsScores(
+  start: string,
+  end: string
+): Promise<{ asOfDate: string; isLive: boolean; byAccount: Record<string, FactorsSnapshot> }> {
+  const today = todayIsoIST();
+  const effectiveEnd = end < today ? end : today;
+
+  const rows = await getFactorsScoreRows();
+  const availableDates = Array.from(new Set(rows.map((r) => r.runDate))).filter((d) => d <= effectiveEnd);
+  const latestSheetDate = availableDates.length > 0 ? availableDates.sort().at(-1)! : null;
+
+  if (effectiveEnd === today && latestSheetDate !== today) {
+    // Today hasn't been captured into history yet - go live.
+    const byAccount = await getLiveFactorsSnapshot();
+    return { asOfDate: today, isLive: true, byAccount };
+  }
+
+  if (!latestSheetDate) {
+    // No history exists at all as of this period (e.g. a week entirely
+    // before this system went live) - nothing to show, not an error.
+    return { asOfDate: effectiveEnd, isLive: false, byAccount: {} };
+  }
+
+  const byAccount: Record<string, FactorsSnapshot> = {};
+  for (const r of rows) {
+    if (r.runDate === latestSheetDate) byAccount[r.accountId] = { level: r.engagementLevel, score: r.engagementScore };
+  }
+  return { asOfDate: latestSheetDate, isLive: false, byAccount };
+}
+
+// GET /api/accounts/factors-score?start=&end= - the Factor Score column for
+// every account, resolved per the rule above. Independent of the
+// Salesforce-Task rank scan (/rank) - different data source, different cache.
+accountsRouter.get("/factors-score", async (req, res) => {
+  try {
+    const { start, end } = requireDateRange(req.query);
+    const resolved = await resolveFactorsScores(start, end);
+    res.json(resolved);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/accounts/:id/factors-history - full day-by-day Engagement Level
+// history for one account, every snapshot ever captured (not scoped to the
+// selected week) - the drill-down that actually answers "when and how did
+// this change," which a single collapsed per-week value can't show on its
+// own. Includes today live, appended on top of the sheet history, if
+// tonight's run hasn't happened yet.
+accountsRouter.get("/:id/factors-history", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const rows = await getFactorsScoreRows();
+    const history = rows
+      .filter((r) => r.accountId === id)
+      .map((r) => ({ date: r.runDate, level: r.engagementLevel, score: r.engagementScore, isLive: false }))
+      .sort((a, b) => (a.date < b.date ? -1 : 1));
+
+    const today = todayIsoIST();
+    const hasToday = history.some((h) => h.date === today);
+    if (!hasToday) {
+      const live = await getLiveFactorsSnapshot();
+      const snapshot = live[id];
+      if (snapshot) {
+        history.push({ date: today, level: snapshot.level, score: snapshot.score, isLive: true });
+      }
+    }
+
+    res.json({ history });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/accounts/:id/contacts?start=YYYY-MM-DD&end=YYYY-MM-DD - contact
 // list backing the "# contacts" popup, each flagged active/inactive for the
 // given week (active = at least one outbound touchpoint - email or WhatsApp -
@@ -446,7 +758,7 @@ accountsRouter.get("/:id/contacts", async (req, res) => {
     let activeIds = new Set<string>();
     if (contacts.length > 0 && dateClause) {
       const idList = contacts.map((c) => `'${esc(c.Id)}'`).join(",");
-      const subjectOr = TOUCHPOINT_KEYS.map((k) => `Subject LIKE '${TOUCHPOINTS[k].prefix}'`).join(" OR ");
+      const subjectOr = Array.from(new Set(TOUCHPOINT_PATTERNS.map((p) => patternClause(p)))).join(" OR ");
       const activeRows = await soqlQuery<{ WhoId: string }>(
         `SELECT WhoId FROM Task WHERE WhoId IN (${idList}) AND (${subjectOr})${dateClause} GROUP BY WhoId`
       );
@@ -477,33 +789,49 @@ accountsRouter.get("/:id/contacts", async (req, res) => {
   }
 });
 
-const MDR_OWNER_NAMES_SOQL = Array.from(MDR_OWNER_NAMES)
-  .map((n) => `'${n.replace(/'/g, "\\'")}'`)
-  .join(",");
+function soqlNameList(names: Set<string>): string {
+  return Array.from(names)
+    .map((n) => `'${n.replace(/'/g, "\\'")}'`)
+    .join(",");
+}
+
+const MDR_OWNER_NAMES_SOQL = soqlNameList(MDR_OWNER_NAMES);
+const SDR_OWNER_NAMES_SOQL = soqlNameList(SDR_OWNER_NAMES);
+const ALL_MDR_SDR_NAMES_SOQL = soqlNameList(new Set([...MDR_OWNER_NAMES, ...SDR_OWNER_NAMES]));
 
 async function touchpointEvents(accountId: string, key: TouchpointKey, dateClause: string) {
   const tp = TOUCHPOINTS[key];
-  const prefix = tp.prefix;
-  // mdr/sales share a Subject prefix - Owner.Name is the only thing that
+  const subjectClause = `(${tp.patterns.map((p) => patternClause(p)).join(" OR ")})`;
+  // mdr/sdr/sales share a Subject prefix - Owner.Name is the only thing that
   // tells them apart, so the detail list needs the same filter the rank
-  // scan uses, or an MDR popup would also show every Sales rep's touches.
+  // scan uses, or an MDR popup would also show every other rep's touches.
   const ownerClause =
     tp.source === "mdr"
       ? ` AND Owner.Name IN (${MDR_OWNER_NAMES_SOQL})`
+      : tp.source === "sdr"
+      ? ` AND Owner.Name IN (${SDR_OWNER_NAMES_SOQL})`
       : tp.source === "sales"
-      ? ` AND Owner.Name NOT IN (${MDR_OWNER_NAMES_SOQL})`
+      ? ` AND Owner.Name NOT IN (${ALL_MDR_SDR_NAMES_SOQL})`
       : "";
 
-  const contacts = await soqlQuery<{ Id: string }>(
-    `SELECT Id FROM Contact WHERE AccountId = '${esc(accountId)}'`
-  );
-  const contactIds = contacts.map((c) => c.Id);
-  if (contactIds.length === 0) return { events: [] as any[] };
+  // WhoId can point at either a Contact or a Lead for this account - a real,
+  // confirmed gap was that Lead-owned touches (e.g. an event attendee being
+  // worked by MDR/SDR before conversion) were dropped entirely when only
+  // Contacts were checked here (see getLeadToAccountMap for the field
+  // mapping). Both are fetched and queried together below.
+  const [contacts, leads] = await Promise.all([
+    soqlQuery<{ Id: string }>(`SELECT Id FROM Contact WHERE AccountId = '${esc(accountId)}'`),
+    soqlQuery<{ Id: string }>(
+      `SELECT Id FROM Lead WHERE Company_Account_ID__c = '${esc(accountId)}' OR Account__c = '${esc(accountId)}'`
+    ),
+  ]);
+  const whoIds = [...contacts.map((c) => c.Id), ...leads.map((l) => l.Id)];
+  if (whoIds.length === 0) return { events: [] as any[] };
 
   const instanceUrl = await getInstanceUrl();
   const events: any[] = [];
 
-  for (const batch of chunk(contactIds, 400)) {
+  for (const batch of chunk(whoIds, 400)) {
     const inList = batch.map((id) => `'${esc(id)}'`).join(",");
     const tasks = await soqlQuery<{
       Id: string;
@@ -515,7 +843,7 @@ async function touchpointEvents(accountId: string, key: TouchpointKey, dateClaus
       CreatedDate: string;
       Description: string | null;
     }>(
-      `SELECT Id, Subject, WhoId, Who.Name, Owner.Name, Owner.Email, ActivityDate, CreatedDate, Description FROM Task WHERE Subject LIKE '${prefix}' AND WhoId IN (${inList})${ownerClause}${dateClause} ORDER BY CreatedDate DESC LIMIT 500`
+      `SELECT Id, Subject, WhoId, Who.Name, Owner.Name, Owner.Email, ActivityDate, CreatedDate, Description FROM Task WHERE ${subjectClause} AND WhoId IN (${inList})${ownerClause}${dateClause} ORDER BY CreatedDate DESC LIMIT 500`
     );
 
     for (const t of tasks) {
@@ -526,10 +854,16 @@ async function touchpointEvents(accountId: string, key: TouchpointKey, dateClaus
         /^\[Outreach\]\s*(\[[^\]]+\]\s*)+/,
         ""
       );
+      // A Lead's Id always starts with the 00Q key prefix, a Contact's with
+      // 003 - used here only to pick the right Salesforce object page and
+      // label, since the query above already mixed both kinds of WhoId
+      // together.
+      const personType = t.WhoId.startsWith("00Q") ? "Lead" : "Contact";
       events.push({
         taskId: t.Id,
-        person: t.Who?.Name || "(unknown contact)",
+        person: t.Who?.Name || `(unknown ${personType.toLowerCase()})`,
         contactId: t.WhoId,
+        personType,
         campaign: cleaned || t.Subject,
         date: t.ActivityDate || t.CreatedDate,
         // The Netcore rep who owns this Task - confirmed via Task.OwnerId that
@@ -537,14 +871,16 @@ async function touchpointEvents(accountId: string, key: TouchpointKey, dateClaus
         // user), verified directly against live data.
         sender: t.Owner?.Name || null,
         senderEmail: t.Owner?.Email || null,
-        // Only populated for "sent" and "reply received" events - Outreach.io
-        // logs the full email body on those, but "opened"/"clicked" are just
-        // tracking pings fired after the fact with no body attached (confirmed
-        // against live data: 0% of opened/clicked tasks carry a Description,
-        // vs 100% of sent/reply tasks).
-        description: t.Description || null,
+        // Only populated for Outreach.io "sent"/"reply received" events,
+        // which genuinely carry the full email body in Description. Marketing
+        // automation tasks (Email_open/Email_click/Whatsapp_*) ALSO have a
+        // non-empty Description, but confirmed against live data it's just
+        // internal sync metadata (campaign ID, webhook name, sync
+        // timestamp) - never the email body - so surfacing it as "click to
+        // read email" would be actively misleading, not merely unhelpful.
+        description: tp.source !== "marketing" ? t.Description || null : null,
         sfTaskUrl: `${instanceUrl}/lightning/r/Task/${t.Id}/view`,
-        sfContactUrl: `${instanceUrl}/lightning/r/Contact/${t.WhoId}/view`,
+        sfContactUrl: `${instanceUrl}/lightning/r/${personType}/${t.WhoId}/view`,
       });
     }
   }
@@ -572,18 +908,28 @@ accountsRouter.get("/:id/website-sessions", async (req, res) => {
     );
 
     const events = matched
-      .map((s) => ({
-        date: s.eventDate,
-        receivedAt: s.receivedAt,
-        durationSec: s.sessionActiveTimeSec,
-        firstPageUrl: s.firstPageUrl,
-        latestPageUrl: s.latestPageUrl,
-      }))
+      .map((s) => {
+        const highIntent = isHighIntentUrl(s.firstPageUrl) || isHighIntentUrl(s.latestPageUrl);
+        // Mutually exclusive, same precedence rule as computeRanks: a session
+        // that matches both tiers counts as High, never both at once.
+        const mediumIntent = !highIntent && (isMediumIntentUrl(s.firstPageUrl) || isMediumIntentUrl(s.latestPageUrl));
+        return {
+          date: s.eventDate,
+          receivedAt: s.receivedAt,
+          durationSec: s.sessionActiveTimeSec,
+          firstPageUrl: s.firstPageUrl,
+          latestPageUrl: s.latestPageUrl,
+          highIntent,
+          mediumIntent,
+        };
+      })
       .sort((a, b) => (a.receivedAt < b.receivedAt ? 1 : -1));
 
     const totalDurationSec = matched.reduce((sum, s) => sum + s.sessionActiveTimeSec, 0);
+    const highIntentCount = events.filter((e) => e.highIntent).length;
+    const mediumIntentCount = events.filter((e) => e.mediumIntent).length;
 
-    res.json({ sessionCount: matched.length, totalDurationSec, events });
+    res.json({ sessionCount: matched.length, totalDurationSec, highIntentCount, mediumIntentCount, events });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

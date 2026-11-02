@@ -3,7 +3,6 @@ import type { LinkedinMetrics, RankEntry } from "./api";
 export interface ScoreMetric {
   key: string;
   label: string;
-  weight: number;
   getValue: (
     accountId: string,
     ranks: Record<string, RankEntry>,
@@ -12,26 +11,17 @@ export interface ScoreMetric {
 }
 
 /**
- * Weighted engagement score - the industry-standard technique for combining
- * heterogeneous engagement signals into one priority number (the same idea
- * behind HubSpot/Marketo-style behavioral lead scoring and account-level
- * intent scoring from 6sense/Demandbase). Not a mean or median: those treat
- * every metric as if it lived on the same scale, but LinkedIn impressions
- * (hundreds) and WhatsApp replies (0 or 1 for almost everyone) are not
- * comparable numbers, so a raw average would let whichever metric has the
- * biggest numbers drown out everything else regardless of how meaningful it
- * actually is.
+ * Engagement Score - a plain sum of every marketing-side touchpoint count for
+ * the selected week: website sessions, email opens/clicks, WhatsApp
+ * read/clicked/replied, LinkedIn organic/paid engagements and paid clicks.
+ * Raw counts, added together, no weighting or percentile conversion.
  *
- * Fix: convert every metric to a PERCENTILE RANK (0-100, relative to all
- * other accounts that week) before combining - this puts every metric on
- * the same 0-100 scale and is robust to the heavy skew in this data (most
- * accounts at 0, a few very high), unlike min-max scaling where one outlier
- * account would compress everyone else toward 0.
- *
- * Weights reflect buying-intent strength, not just activity volume:
- *   3 = active, effortful response (clicked, replied)
- *   2 = engaged but passive (opened, read, visited, LinkedIn engagement/click)
- *   1 = passive/algorithmic exposure (LinkedIn impressions)
+ * LinkedIn impressions are excluded from that plain sum and counted
+ * differently instead, since a single impression is a far weaker signal than
+ * any of the other touchpoints and would otherwise swamp the total just by
+ * being a much bigger raw number: every full 500 impressions (organic + paid
+ * combined) contributes 1 point - 500 impressions = 1, 1000 = 2, 1500 = 3,
+ * and so on (Math.floor(impressions / 500)).
  *
  * Marketing-only, by design: MDR and Sales outreach (Outreach.io touches) are
  * tracked as their own columns but deliberately excluded from this score.
@@ -42,47 +32,31 @@ export interface ScoreMetric {
  * score exists to drive.
  */
 export const SCORE_METRICS: ScoreMetric[] = [
-  { key: "emailClicks", label: "Email clicks", weight: 3, getValue: (id, r) => r[id]?.emailClicks ?? 0 },
-  { key: "waReplied", label: "WhatsApp replied", weight: 3, getValue: (id, r) => r[id]?.waReplied ?? 0 },
-  { key: "waClicked", label: "WhatsApp clicked", weight: 3, getValue: (id, r) => r[id]?.waClicked ?? 0 },
-
-  { key: "emailOpens", label: "Email opens", weight: 2, getValue: (id, r) => r[id]?.emailOpens ?? 0 },
-  { key: "waRead", label: "WhatsApp read", weight: 2, getValue: (id, r) => r[id]?.waRead ?? 0 },
-  { key: "websiteSessions", label: "Website sessions", weight: 2, getValue: (id, r) => r[id]?.websiteSessions ?? 0 },
+  { key: "websiteSessions", label: "Website sessions", getValue: (id, r) => r[id]?.websiteSessions ?? 0 },
+  { key: "emailOpens", label: "Email opens", getValue: (id, r) => r[id]?.emailOpens ?? 0 },
+  { key: "emailClicks", label: "Email clicks", getValue: (id, r) => r[id]?.emailClicks ?? 0 },
+  { key: "waRead", label: "WhatsApp read", getValue: (id, r) => r[id]?.waRead ?? 0 },
+  { key: "waClicked", label: "WhatsApp clicked", getValue: (id, r) => r[id]?.waClicked ?? 0 },
+  { key: "waReplied", label: "WhatsApp replied", getValue: (id, r) => r[id]?.waReplied ?? 0 },
   {
     key: "liOrganicEngagements",
     label: "LinkedIn organic engagements",
-    weight: 2,
     getValue: (id, _r, li) => li?.[id]?.organicEngagements ?? 0,
   },
   {
     key: "liPaidEngagements",
     label: "LinkedIn paid engagements",
-    weight: 2,
     getValue: (id, _r, li) => li?.[id]?.paidEngagements ?? 0,
   },
   {
     key: "liPaidClicks",
     label: "LinkedIn paid clicks",
-    weight: 2,
     getValue: (id, _r, li) => li?.[id]?.paidClicks ?? 0,
-  },
-
-  {
-    key: "liOrganicImpressions",
-    label: "LinkedIn organic impressions",
-    weight: 1,
-    getValue: (id, _r, li) => li?.[id]?.organicImpressions ?? 0,
-  },
-  {
-    key: "liPaidImpressions",
-    label: "LinkedIn paid impressions",
-    weight: 1,
-    getValue: (id, _r, li) => li?.[id]?.paidImpressions ?? 0,
   },
 ];
 
-const TOTAL_WEIGHT = SCORE_METRICS.reduce((sum, m) => sum + m.weight, 0);
+/** Every 500 combined LinkedIn impressions (organic + paid) = 1 point. */
+const IMPRESSIONS_PER_POINT = 500;
 
 /**
  * Percentile rank (0-100) of each value within the array, where ZERO always
@@ -97,6 +71,12 @@ const TOTAL_WEIGHT = SCORE_METRICS.reduce((sum, m) => sum + m.weight, 0);
  * not something that reads as "roughly average." Confirmed as a real bug
  * from live data: an account with literal zero on every single touchpoint
  * scored 49.2/100 before this fix.
+ *
+ * Still used for the multi-metric "top accounts by" quick-sort feature (to
+ * put differently-scaled metrics on a comparable footing), and to color the
+ * Score pill relative to this week's other accounts - no longer used to
+ * compute the Score number itself, which is a plain sum (see
+ * computeEngagementScores).
  */
 export function percentileRanks(values: number[]): number[] {
   const n = values.length;
@@ -127,27 +107,27 @@ export function percentileRanks(values: number[]): number[] {
 }
 
 /**
- * Weighted percentile score (0-100) per account for the given week - the
- * single number used to prioritize which accounts to work this week.
- * Percentile rank is relative to the whole set, so this is one pass over
- * every account at once, not computed independently per row.
+ * Engagement Score per account for the given week: the plain sum of every
+ * metric in SCORE_METRICS, plus LinkedIn impression points
+ * (floor(impressions / 500)). Unbounded, not 0-100 - callers that need a
+ * relative "how hot is this vs. everyone else this week" read (e.g. the
+ * Score pill's color) should run this through percentileRanks separately.
  */
 export function computeEngagementScores(
   accountIds: string[],
   ranks: Record<string, RankEntry>,
   liMetrics: Record<string, LinkedinMetrics> | undefined
 ): Record<string, number> {
-  const percentilesByMetric = SCORE_METRICS.map((m) =>
-    percentileRanks(accountIds.map((id) => m.getValue(id, ranks, liMetrics)))
-  );
-
   const scores: Record<string, number> = {};
-  accountIds.forEach((id, idx) => {
-    let weighted = 0;
-    for (let m = 0; m < SCORE_METRICS.length; m++) {
-      weighted += SCORE_METRICS[m].weight * percentilesByMetric[m][idx];
-    }
-    scores[id] = Math.round((weighted / TOTAL_WEIGHT) * 10) / 10;
+  accountIds.forEach((id) => {
+    let sum = 0;
+    for (const m of SCORE_METRICS) sum += m.getValue(id, ranks, liMetrics);
+
+    const organicImpressions = liMetrics?.[id]?.organicImpressions ?? 0;
+    const paidImpressions = liMetrics?.[id]?.paidImpressions ?? 0;
+    const impressionPoints = Math.floor((organicImpressions + paidImpressions) / IMPRESSIONS_PER_POINT);
+
+    scores[id] = sum + impressionPoints;
   });
   return scores;
 }

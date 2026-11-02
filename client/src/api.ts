@@ -40,19 +40,28 @@ export const TOUCHPOINTS = {
   mdrEmailClicked: "MDR email clicked",
   mdrEmailReplied: "MDR email replied",
   mdrCalls: "MDR calls",
+  mdrWaCalls: "MDR WhatsApp calls",
+
+  sdrEmailOut: "SDR email out",
+  sdrEmailOpened: "SDR email opened",
+  sdrEmailClicked: "SDR email clicked",
+  sdrEmailReplied: "SDR email replied",
+  sdrCalls: "SDR calls",
+  sdrWaCalls: "SDR WhatsApp calls",
 
   salesEmailOut: "Sales email out",
   salesEmailOpened: "Sales email opened",
   salesEmailClicked: "Sales email clicked",
   salesEmailReplied: "Sales email replied",
   salesCalls: "Sales calls",
+  salesWaCalls: "Sales WhatsApp calls",
 } as const;
 
 export type TouchpointKey = keyof typeof TOUCHPOINTS;
 
-export type TouchpointSource = "marketing" | "mdr" | "sales";
+export type TouchpointSource = "marketing" | "mdr" | "sdr" | "sales";
 
-/** Which of the three effort groups each touchpoint belongs to - drives the grouped table header and sort-dropdown sections. */
+/** Which of the four effort groups each touchpoint belongs to - drives the grouped table header and sort-dropdown sections. */
 export const TOUCHPOINT_SOURCE: Record<TouchpointKey, TouchpointSource> = {
   emailOpens: "marketing",
   emailClicks: "marketing",
@@ -65,15 +74,28 @@ export const TOUCHPOINT_SOURCE: Record<TouchpointKey, TouchpointSource> = {
   mdrEmailClicked: "mdr",
   mdrEmailReplied: "mdr",
   mdrCalls: "mdr",
+  mdrWaCalls: "mdr",
+
+  sdrEmailOut: "sdr",
+  sdrEmailOpened: "sdr",
+  sdrEmailClicked: "sdr",
+  sdrEmailReplied: "sdr",
+  sdrCalls: "sdr",
+  sdrWaCalls: "sdr",
 
   salesEmailOut: "sales",
   salesEmailOpened: "sales",
   salesEmailClicked: "sales",
   salesEmailReplied: "sales",
   salesCalls: "sales",
+  salesWaCalls: "sales",
 };
 
-export type RankEntry = Record<TouchpointKey, number> & { websiteSessions: number };
+export type RankEntry = Record<TouchpointKey, number> & {
+  websiteSessions: number;
+  highIntentSessions: number;
+  mediumIntentSessions: number;
+};
 
 /**
  * Every touchpoint count (+ website sessions) for EVERY account in the given
@@ -120,12 +142,20 @@ export interface WebsiteSessionEvent {
   durationSec: number;
   firstPageUrl: string;
   latestPageUrl: string;
+  /** Entry or exit page matches a high-intent page from the Factors.ai scoring sheet. */
+  highIntent: boolean;
+  /** Same, but Medium tier - only true when highIntent is false (High always takes precedence). */
+  mediumIntent: boolean;
 }
 
 export function fetchWebsiteSessionEvents(accountId: string, range: DateRange) {
-  return getJson<{ sessionCount: number; totalDurationSec: number; events: WebsiteSessionEvent[] }>(
-    `/api/accounts/${accountId}/website-sessions?${rangeParams(range)}`
-  );
+  return getJson<{
+    sessionCount: number;
+    totalDurationSec: number;
+    highIntentCount: number;
+    mediumIntentCount: number;
+    events: WebsiteSessionEvent[];
+  }>(`/api/accounts/${accountId}/website-sessions?${rangeParams(range)}`);
 }
 
 export interface LinkedinMetrics {
@@ -153,4 +183,34 @@ export interface LinkedinSnapshot {
  */
 export function fetchLinkedinSnapshots() {
   return getJson<{ snapshots: LinkedinSnapshot[] }>("/api/accounts/linkedin-snapshots");
+}
+
+export interface FactorsSnapshot {
+  level: string; // "Hot" | "Warm" | "Cool" | "Ice" | "" (not yet scored)
+  score: number | null;
+}
+
+/**
+ * Factor Score for every account for the given period. A past, fully-
+ * elapsed period is permanent history (from the daily Factors_Score sheet,
+ * never retroactively rewritten); a period that includes today is live,
+ * straight from Salesforce, since today's row doesn't exist in the sheet
+ * until tonight's automation run. `isLive` tells you which one you got.
+ */
+export function fetchFactorsScores(range: DateRange) {
+  return getJson<{ asOfDate: string; isLive: boolean; byAccount: Record<string, FactorsSnapshot> }>(
+    `/api/accounts/factors-score?${rangeParams(range)}`
+  );
+}
+
+export interface FactorsHistoryEntry {
+  date: string;
+  level: string;
+  score: number | null;
+  isLive: boolean;
+}
+
+/** Every daily snapshot ever captured for one account - the "when and how did this change" drill-down, independent of whichever week is selected. */
+export function fetchFactorsHistory(accountId: string) {
+  return getJson<{ history: FactorsHistoryEntry[] }>(`/api/accounts/${accountId}/factors-history`);
 }

@@ -5,11 +5,13 @@
  * viewer's own browser, never synced anywhere.
  */
 export interface PersistedDashboardState {
-  weekNum?: number;
+  month?: string; // "YYYY-MM"
+  weekNum?: number | "all"; // "all" = whole-month consolidated view
   search?: string;
   regions?: string[];
   mrr?: string[];
-  sortMetrics?: string[];
+  factorLevels?: string[]; // Factor Score (Hot/Warm/Cool/Ice/Not scored) filter
+  sortMetrics?: string[]; // also carries "highIntent"/"mediumIntent" filter checkboxes
   page?: number;
 }
 

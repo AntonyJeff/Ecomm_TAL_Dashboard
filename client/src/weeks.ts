@@ -68,3 +68,49 @@ export function currentWeekNumber(weeks: MonthWeek[], todayIso: string): number 
   const match = weeks.find((w) => todayIso >= w.start && todayIso <= w.end);
   return match?.week ?? weeks[0]?.week ?? 1;
 }
+
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+/** "YYYY-MM" for the given date's month - the value used throughout for the month selector. */
+export function monthValueOf(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/** First and last calendar day of a "YYYY-MM" month - the date range used for the "whole month" consolidated view. */
+export function monthBounds(monthValue: string): { start: string; end: string } {
+  const [y, m] = monthValue.split("-").map(Number);
+  const first = new Date(y, m - 1, 1);
+  const last = new Date(y, m, 0);
+  return { start: iso(first), end: iso(last) };
+}
+
+export interface MonthOption {
+  value: string; // "YYYY-MM"
+  label: string; // "October 2026"
+}
+
+/**
+ * Every month from startValue through endValue (inclusive), oldest first.
+ * The list grows automatically as real time passes - no manual upkeep
+ * needed once a start month is picked (the month this dashboard went live).
+ */
+export function monthOptionsRange(startValue: string, endValue: string): MonthOption[] {
+  const [startYear, startMonth] = startValue.split("-").map(Number);
+  const [endYear, endMonth] = endValue.split("-").map(Number);
+
+  const opts: MonthOption[] = [];
+  let y = startYear;
+  let m = startMonth;
+  while (y < endYear || (y === endYear && m <= endMonth)) {
+    opts.push({ value: `${y}-${String(m).padStart(2, "0")}`, label: `${MONTH_NAMES[m - 1]} ${y}` });
+    m++;
+    if (m > 12) {
+      m = 1;
+      y++;
+    }
+  }
+  return opts;
+}

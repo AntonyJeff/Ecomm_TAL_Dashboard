@@ -16,11 +16,19 @@ const TOUCHPOINT_ICON: Record<TouchpointKey, string> = {
   mdrEmailClicked: "🖱️",
   mdrEmailReplied: "↩️",
   mdrCalls: "📞",
+  mdrWaCalls: "📱",
+  sdrEmailOut: "📤",
+  sdrEmailOpened: "📬",
+  sdrEmailClicked: "🖱️",
+  sdrEmailReplied: "↩️",
+  sdrCalls: "📞",
+  sdrWaCalls: "📱",
   salesEmailOut: "📤",
   salesEmailOpened: "📬",
   salesEmailClicked: "🖱️",
   salesEmailReplied: "↩️",
   salesCalls: "📞",
+  salesWaCalls: "📱",
 };
 
 export function TouchpointEventsModal({
@@ -66,8 +74,9 @@ export function TouchpointEventsModal({
   }, [events, search]);
 
   const source = TOUCHPOINT_SOURCE[touchpoint];
-  const isOutreachSourced = source === "mdr" || source === "sales";
-  const isCallTouchpoint = touchpoint === "mdrCalls" || touchpoint === "salesCalls";
+  const isOutreachSourced = source === "mdr" || source === "sdr" || source === "sales";
+  const isCallTouchpoint = touchpoint === "mdrCalls" || touchpoint === "sdrCalls" || touchpoint === "salesCalls";
+  const isWaCallTouchpoint = touchpoint === "mdrWaCalls" || touchpoint === "sdrWaCalls" || touchpoint === "salesWaCalls";
 
   return (
     <Modal
@@ -82,7 +91,9 @@ export function TouchpointEventsModal({
       {isOutreachSourced && events && events.length > 0 && (
         <p className="modal-summary">
           {isCallTouchpoint
-            ? "Logged by Outreach.io from the rep's dialer - only the call outcome is synced, no recording or transcript."
+            ? "Counts both Outreach.io's dialer (synced only once a call actually connects) and manually-logged Zoom Phone calls - neither carries a recording or transcript, just the fact that the call happened."
+            : isWaCallTouchpoint
+            ? "Manually logged by the rep when they called the prospect from their own personal WhatsApp number - no recording, just a record that the call happened."
             : "Cards with a 📄 have the full email content - click to read it. \"Opened\"/\"Clicked\" are tracking pings fired after the fact, so they don't carry a copy of the body."}
         </p>
       )}
@@ -104,7 +115,7 @@ export function TouchpointEventsModal({
                 <TimelineItem
                   key={e.taskId}
                   icon={TOUCHPOINT_ICON[touchpoint]}
-                  title={e.person}
+                  title={e.personType === "Lead" ? `${e.person} (Lead)` : e.person}
                   titleHref={e.sfContactUrl}
                   subtitle={e.description ? `📄 ${e.campaign}` : e.campaign}
                   pill={e.date}
