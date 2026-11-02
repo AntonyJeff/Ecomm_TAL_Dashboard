@@ -1302,3 +1302,93 @@ thead .sticky-col {
     background: rgba(0, 0, 0, 0.3);
   }
 }
+
+/* ---- Daily Factor Score spike banner ---- */
+
+.spike-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.spike-banner:hover {
+  border-color: var(--accent);
+}
+
+.spike-banner-active {
+  color: #ff5a5a;
+  background: rgba(255, 90, 90, 0.08);
+  border-color: rgba(255, 90, 90, 0.35);
+  font-weight: 600;
+}
+
+.spike-banner-sep {
+  opacity: 0.5;
+}
+
+.spike-banner-cta {
+  margin-left: auto;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.spike-date-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.spike-group-title {
+  margin: 18px 0 8px;
+  font-size: 13px;
+}
+
+.spike-signals {
+  margin-top: 6px;
+}
+
+.spike-signals-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-2);
+  margin-bottom: 4px;
+}
+
+.spike-signals-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.spike-signal-chip {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.spike-signals-note {
+  font-size: 11px;
+  color: var(--text-2);
+  font-style: italic;
+}

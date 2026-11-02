@@ -257,6 +257,8 @@ export interface FactorsScoreRow {
   accountId: string;
   engagementLevel: string; // "Hot" | "Warm" | "Cool" | "Ice" | "" (not yet scored by Factors)
   engagementScore: number | null;
+  /** Raw "Top Engagement Signals" text from Factors.ai, e.g. "Linkedin Paid Impressions 83 , Form Submitted v2 2" - the "why" behind a level/score jump. */
+  topEngagementSignals: string;
 }
 
 let factorsScoreCache: { rows: FactorsScoreRow[]; fetchedAt: number } | null = null;
@@ -291,6 +293,7 @@ export async function getFactorsScoreRows(force = false): Promise<FactorsScoreRo
     accountId: headers.findIndex((h) => h === "accountid"),
     engagementLevel: headers.findIndex((h) => h === "engagementlevel"),
     engagementScore: headers.findIndex((h) => h === "factorsengagementscore"),
+    topEngagementSignals: headers.findIndex((h) => h === "topengagementsignals"),
   };
 
   const rows: FactorsScoreRow[] = values
@@ -304,6 +307,7 @@ export async function getFactorsScoreRows(force = false): Promise<FactorsScoreRo
         accountId: r[idx.accountId],
         engagementLevel: idx.engagementLevel >= 0 ? r[idx.engagementLevel] ?? "" : "",
         engagementScore: rawScore && Number.isFinite(parsed) ? parsed : null,
+        topEngagementSignals: idx.topEngagementSignals >= 0 ? r[idx.topEngagementSignals] ?? "" : "",
       };
     });
 

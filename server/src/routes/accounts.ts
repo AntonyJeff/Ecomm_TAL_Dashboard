@@ -619,35 +619,80 @@ function todayIsoIST(): string {
 interface FactorsSnapshot {
   level: string;
   score: number | null;
+  /** Raw "Top Engagement Signals" text from Factors.ai - only fetched where a caller actually needs the "why" (the spike banner), left undefined elsewhere. */
+  signals?: string;
 }
 
-// Live current Engagement_Level__c / Factors_Engagement_Score__c for every
-// TAL account, straight from Salesforce - used ONLY for "today," since the
-// daily sheet snapshot for today doesn't exist until tonight's automation
-// run. Cached briefly so repeated page views in the same few minutes don't
-// re-scan all 5,555 accounts on every request.
+/** One parsed "Top Engagement Signals" entry, e.g. "Linkedin Paid Impressions 83" -> { label: "Linkedin Paid Impressions", count: 83 }. */
+interface TopSignal {
+  label: string;
+  count: number | null;
+}
+
+/**
+ * Factors.ai's Top_Engagement_Signals__c is a single comma-separated text
+ * field (confirmed live: "Linkedin Paid Impressions 83 , Form Submitted v2
+ * 2") - split into individual labeled signals so the spike banner can show
+ * each one as its own line, with an explicit note that these specific
+ * signals (LinkedIn ad impressions, website form submissions) are NOT
+ * currently captured anywhere else in this dashboard - confirmed by
+ * investigation that our own LinkedIn/Website Sessions data sources don't
+ * carry this information at all, or are far behind Factors' own internal
+ * tracking.
+ */
+function parseTopEngagementSignals(raw: string): TopSignal[] {
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((segment) => {
+      const m = segment.match(/^(.*?)\s+(\d+)$/);
+      return m ? { label: m[1].trim(), count: Number(m[2]) } : { label: segment, count: null };
+    });
+}
+
+// Live current Engagement_Level__c / Factors_Engagement_Score__c (+ signals,
+// when requested) for every TAL account, straight from Salesforce - used
+// ONLY for "today," since the daily sheet snapshot for today doesn't exist
+// until tonight's automation run. Cached briefly, and separately per
+// with/without-signals variant, so repeated page views in the same few
+// minutes don't re-scan all 5,555 accounts on every request.
 let liveFactorsCache: { computedAt: number; byAccount: Record<string, FactorsSnapshot> } | null = null;
+let liveFactorsWithSignalsCache: { computedAt: number; byAccount: Record<string, FactorsSnapshot> } | null = null;
 const LIVE_FACTORS_CACHE_TTL_MS = 5 * 60 * 1000;
 
-async function getLiveFactorsSnapshot(): Promise<Record<string, FactorsSnapshot>> {
-  if (liveFactorsCache && Date.now() - liveFactorsCache.computedAt < LIVE_FACTORS_CACHE_TTL_MS) {
-    return liveFactorsCache.byAccount;
+async function getLiveFactorsSnapshot(withSignals = false): Promise<Record<string, FactorsSnapshot>> {
+  const cache = withSignals ? liveFactorsWithSignalsCache : liveFactorsCache;
+  if (cache && Date.now() - cache.computedAt < LIVE_FACTORS_CACHE_TTL_MS) {
+    return cache.byAccount;
   }
 
   const accounts = await getAccountsFromSheet();
   const byAccount: Record<string, FactorsSnapshot> = {};
+  const fields = withSignals
+    ? "Id, Engagement_Level__c, Factors_Engagement_Score__c, Top_Engagement_Signals__c"
+    : "Id, Engagement_Level__c, Factors_Engagement_Score__c";
 
   await mapWithConcurrency(chunk(accounts.map((a) => a.accountId), 300), 8, async (idBatch) => {
     const idList = idBatch.map((id) => `'${esc(id)}'`).join(",");
-    const rows = await soqlQuery<{ Id: string; Engagement_Level__c: string | null; Factors_Engagement_Score__c: number | null }>(
-      `SELECT Id, Engagement_Level__c, Factors_Engagement_Score__c FROM Account WHERE Id IN (${idList})`
-    );
+    const rows = await soqlQuery<{
+      Id: string;
+      Engagement_Level__c: string | null;
+      Factors_Engagement_Score__c: number | null;
+      Top_Engagement_Signals__c?: string | null;
+    }>(`SELECT ${fields} FROM Account WHERE Id IN (${idList})`);
     for (const r of rows) {
-      byAccount[r.Id] = { level: r.Engagement_Level__c || "", score: r.Factors_Engagement_Score__c ?? null };
+      byAccount[r.Id] = {
+        level: r.Engagement_Level__c || "",
+        score: r.Factors_Engagement_Score__c ?? null,
+        signals: withSignals ? r.Top_Engagement_Signals__c || "" : undefined,
+      };
     }
   });
 
-  liveFactorsCache = { computedAt: Date.now(), byAccount };
+  if (withSignals) liveFactorsWithSignalsCache = { computedAt: Date.now(), byAccount };
+  else liveFactorsCache = { computedAt: Date.now(), byAccount };
   return byAccount;
 }
 
@@ -702,6 +747,119 @@ accountsRouter.get("/factors-score", async (req, res) => {
     const { start, end } = requireDateRange(req.query);
     const resolved = await resolveFactorsScores(start, end);
     res.json(resolved);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Hot=4 down to unscored=0 - only an UPWARD move between these counts as a "spike." */
+const LEVEL_RANK: Record<string, number> = { "": 0, Ice: 1, Cool: 2, Warm: 3, Hot: 4 };
+
+interface SpikeAccount {
+  accountId: string;
+  accountName: string;
+  fromLevel: string;
+  fromScore: number | null;
+  toLevel: string;
+  toScore: number | null;
+  signals: TopSignal[];
+}
+
+/**
+ * The daily "who just spiked" comparison behind the dashboard's spike
+ * banner: for the given day, finds every account whose Engagement Level
+ * jumped UP relative to the most recent earlier day that has data (never
+ * assumes "yesterday" specifically, since the sheet can have gaps) - split
+ * into "newly Hot" (crossed into Hot from anything else) and "newly Warm"
+ * (crossed into Warm from Cool/Ice/unscored). A account dropping a level, or
+ * moving between two non-adjacent-in-rank-but-equal levels, is not a spike.
+ *
+ * `date` can be any day that has sheet history, OR today - if today hasn't
+ * been written to the sheet yet, this goes live against Salesforce (same
+ * live-vs-historical rule as resolveFactorsScores), including live signals.
+ */
+async function computeFactorSpikes(date: string): Promise<{
+  date: string;
+  previousDate: string | null;
+  isLive: boolean;
+  availableDates: string[];
+  newlyHot: SpikeAccount[];
+  newlyWarm: SpikeAccount[];
+}> {
+  const [rows, accounts] = await Promise.all([getFactorsScoreRows(), getAccountsFromSheet()]);
+  const nameById = new Map(accounts.map((a) => [a.accountId, a.accountName]));
+
+  const sheetDates = Array.from(new Set(rows.map((r) => r.runDate))).sort();
+  const previousDate = sheetDates.filter((d) => d < date).at(-1) ?? null;
+
+  const today = todayIsoIST();
+  const isLive = date === today && !sheetDates.includes(today);
+
+  const toByAccount: Record<string, { level: string; score: number | null; signals: string }> = {};
+  if (isLive) {
+    const live = await getLiveFactorsSnapshot(true);
+    for (const [id, snap] of Object.entries(live)) {
+      toByAccount[id] = { level: snap.level, score: snap.score, signals: snap.signals || "" };
+    }
+  } else {
+    for (const r of rows) {
+      if (r.runDate === date) {
+        toByAccount[r.accountId] = { level: r.engagementLevel, score: r.engagementScore, signals: r.topEngagementSignals };
+      }
+    }
+  }
+
+  const fromByAccount: Record<string, { level: string; score: number | null }> = {};
+  if (previousDate) {
+    for (const r of rows) {
+      if (r.runDate === previousDate) fromByAccount[r.accountId] = { level: r.engagementLevel, score: r.engagementScore };
+    }
+  }
+
+  const newlyHot: SpikeAccount[] = [];
+  const newlyWarm: SpikeAccount[] = [];
+
+  for (const [accountId, to] of Object.entries(toByAccount)) {
+    const from = fromByAccount[accountId] ?? { level: "", score: null };
+    const fromRank = LEVEL_RANK[from.level] ?? 0;
+    const toRank = LEVEL_RANK[to.level] ?? 0;
+    if (toRank <= fromRank) continue; // only upward jumps are a "spike"
+
+    const entry: SpikeAccount = {
+      accountId,
+      accountName: nameById.get(accountId) || "",
+      fromLevel: from.level || "Not scored",
+      fromScore: from.score,
+      toLevel: to.level,
+      toScore: to.score,
+      signals: parseTopEngagementSignals(to.signals),
+    };
+
+    if (to.level === "Hot") newlyHot.push(entry);
+    else if (to.level === "Warm") newlyWarm.push(entry);
+  }
+
+  newlyHot.sort((a, b) => (b.toScore ?? 0) - (a.toScore ?? 0));
+  newlyWarm.sort((a, b) => (b.toScore ?? 0) - (a.toScore ?? 0));
+
+  return {
+    date,
+    previousDate,
+    isLive,
+    availableDates: isLive ? [...sheetDates, today] : sheetDates,
+    newlyHot,
+    newlyWarm,
+  };
+}
+
+// GET /api/accounts/factor-spikes?date=YYYY-MM-DD - the daily spike banner's
+// data: every account that crossed into Hot or Warm since the last available
+// snapshot before `date`. Defaults to today (IST) if no date given.
+accountsRouter.get("/factor-spikes", async (req, res) => {
+  try {
+    const date = String(req.query.date || todayIsoIST());
+    if (!DATE_RE.test(date)) throw new Error("date must be YYYY-MM-DD");
+    res.json(await computeFactorSpikes(date));
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
