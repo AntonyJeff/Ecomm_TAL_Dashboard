@@ -19,6 +19,7 @@ Run manually:
     python automation/factors_score_sync.py
     python automation/factors_score_sync.py --dry-run   # fetch + print only, no write
     python automation/factors_score_sync.py --limit 10  # only the first N accounts (testing)
+    python automation/factors_score_sync.py --backdate 2026-11-02T23:55  # catch-up for a missed day
 
 Scheduled (e.g. GitHub Actions cron) - needs these as secrets/env vars,
 same values as server/.env:
@@ -31,7 +32,7 @@ import argparse
 import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
@@ -222,16 +223,39 @@ def ensure_factors_tab_exists(sheets):
     ).execute()
 
 
+IST_OFFSET = timedelta(hours=5, minutes=30)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true", help="Fetch and print only, don't write to the sheet")
     parser.add_argument("--limit", type=int, default=None, help="Only process the first N accounts (testing)")
+    parser.add_argument(
+        "--backdate",
+        metavar="YYYY-MM-DDTHH:MM",
+        default=None,
+        help=(
+            "Catch-up run for a day the scheduled job missed - stamps the "
+            "row with this IST date/time instead of right now (e.g. "
+            "'2026-11-02T23:55' for an 11:55 PM IST run that never "
+            "happened). The data fetched is always live/current; only the "
+            "run_date/run_timestamp written to the sheet are backdated, so "
+            "the history reads as if the job had actually run then."
+        ),
+    )
     args = parser.parse_args()
 
     t0 = time.time()
-    run_dt = datetime.now(timezone.utc)
-    run_date = run_dt.strftime("%Y-%m-%d")
-    run_timestamp = run_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    if args.backdate:
+        ist_dt = datetime.strptime(args.backdate, "%Y-%m-%dT%H:%M")
+        run_dt = ist_dt - IST_OFFSET  # IST -> UTC, for the stored timestamp
+        run_date = ist_dt.strftime("%Y-%m-%d")  # the calendar day this snapshot represents, in IST
+        run_timestamp = run_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+        print(f"BACKDATING: writing this run as {run_date} {args.backdate} IST ({run_timestamp} UTC)")
+    else:
+        run_dt = datetime.now(timezone.utc)
+        run_date = run_dt.strftime("%Y-%m-%d")
+        run_timestamp = run_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     print("Authenticating to Salesforce...")
     access_token, instance_url = sf_authenticate()
