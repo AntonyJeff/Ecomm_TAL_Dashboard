@@ -210,6 +210,7 @@ export default function App() {
   const [selectedRegions, setSelectedRegions] = useState<Set<string>>(new Set());
   const [selectedMrr, setSelectedMrr] = useState<Set<string>>(new Set());
   const [selectedFactorLevels, setSelectedFactorLevels] = useState<Set<string>>(new Set());
+  const [selectedPriorities, setSelectedPriorities] = useState<Set<string>>(new Set());
   const [showHelp, setShowHelp] = useState(false);
   const [sortMetrics, setSortMetrics] = useState<Set<string>>(() => new Set(persisted.sortMetrics ?? []));
 
@@ -289,6 +290,21 @@ export default function App() {
     const restored = (persisted.mrr ?? []).filter((m) => mrrOptions.includes(m));
     setSelectedMrr(new Set(restored.length > 0 ? restored : mrrOptions));
   }, [mrrOptions, persisted]);
+
+  // Confirmed against the live Google Sheet (the same source every other
+  // identifier column here comes from): P0/P1/P2/blank are the only values
+  // this column ever holds across all 5,555 TAL accounts - "Not set" is the
+  // bucket for blank. Live Salesforce can drift from this (one account was
+  // found as P3 there, still P0 in the sheet), but this dashboard reflects
+  // the sheet everywhere else, so the filter matches that, not live SF.
+  const priorityOptions = useMemo(() => ["P0", "P1", "P2", "Not set"], []);
+  const prioritiesInitialized = useRef(false);
+  useEffect(() => {
+    if (prioritiesInitialized.current) return;
+    prioritiesInitialized.current = true;
+    const restored = (persisted.priorities ?? []).filter((p) => priorityOptions.includes(p));
+    setSelectedPriorities(new Set(restored.length > 0 ? restored : priorityOptions));
+  }, [priorityOptions, persisted]);
 
   // Fixed list, not derived from data - these are the only values
   // Factors.ai's Engagement_Level__c picklist can hold, plus a bucket for
@@ -408,6 +424,7 @@ export default function App() {
     const rows = accounts
       .filter((a) => selectedRegions.size === 0 || selectedRegions.has(a.marketingRegion))
       .filter((a) => selectedMrr.size === 0 || selectedMrr.has(a.potentialMrr))
+      .filter((a) => selectedPriorities.size === 0 || selectedPriorities.has(a.accountPriority || "Not set"))
       // Skip entirely until the Factor Score fetch for this week lands -
       // otherwise every account reads as "Not scored" during the loading
       // window and the table would flash down to almost nothing.
@@ -452,7 +469,7 @@ export default function App() {
       rows.sort((a, b) => parseMrr(b.potentialMrr) - parseMrr(a.potentialMrr));
     }
     return rows;
-  }, [accounts, search, selectedRegions, selectedMrr, selectedFactorLevels, factorsReady, factorsScores, sortMetrics, ranks, ranksReady, currentLiSnapshot, combinedMetricScores, engagementScores]);
+  }, [accounts, search, selectedRegions, selectedMrr, selectedPriorities, selectedFactorLevels, factorsReady, factorsScores, sortMetrics, ranks, ranksReady, currentLiSnapshot, combinedMetricScores, engagementScores]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const visible = filtered.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
@@ -467,7 +484,7 @@ export default function App() {
       return;
     }
     setPage(0);
-  }, [search, selectedRegions, selectedMrr, selectedFactorLevels, rankForRange, sortMetrics, selectedMonth]);
+  }, [search, selectedRegions, selectedMrr, selectedPriorities, selectedFactorLevels, rankForRange, sortMetrics, selectedMonth]);
 
   // Keyed directly on which accounts are actually visible (not on the things
   // that typically cause that to change) - sorting can reorder the visible
@@ -498,6 +515,7 @@ export default function App() {
       search,
       regions: Array.from(selectedRegions),
       mrr: Array.from(selectedMrr),
+      priorities: Array.from(selectedPriorities),
       factorLevels: Array.from(selectedFactorLevels),
       sortMetrics: Array.from(sortMetrics),
       page,
@@ -508,6 +526,7 @@ export default function App() {
     search,
     selectedRegions,
     selectedMrr,
+    selectedPriorities,
     selectedFactorLevels,
     sortMetrics,
     page,
@@ -578,6 +597,12 @@ export default function App() {
           options={factorLevelOptions}
           selected={selectedFactorLevels}
           onChange={setSelectedFactorLevels}
+        />
+        <ColumnFilter
+          label="Account Priority"
+          options={priorityOptions}
+          selected={selectedPriorities}
+          onChange={setSelectedPriorities}
         />
         <MetricMultiSelect
           options={SORT_OPTIONS}

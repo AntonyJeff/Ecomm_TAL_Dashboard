@@ -10,6 +10,7 @@ export interface PersistedDashboardState {
   search?: string;
   regions?: string[];
   mrr?: string[];
+  priorities?: string[]; // Account Priority (P0/P1/P2/Not set) filter
   factorLevels?: string[]; // Factor Score (Hot/Warm/Cool/Ice/Not scored) filter
   sortMetrics?: string[]; // also carries "highIntent"/"mediumIntent" filter checkboxes
   page?: number;

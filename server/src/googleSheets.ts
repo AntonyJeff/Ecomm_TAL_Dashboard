@@ -20,6 +20,8 @@ export interface SheetAccount {
   accountOwner: string;
   potentialMrr: string;
   marketingRegion: string;
+  /** P0/P1/P2, or "" if unset - confirmed these are the only values this sheet column ever holds. */
+  accountPriority: string;
 }
 
 /** Strips protocol/www/trailing slash so sheet domains line up with each other. */
@@ -65,6 +67,7 @@ export async function getAccountsFromSheet(force = false): Promise<SheetAccount[
     accountOwner: headers.findIndex((h) => h.includes("accountowner")),
     potentialMrr: headers.findIndex((h) => h.includes("mrr")),
     marketingRegion: headers.findIndex((h) => h.includes("marketingregion") || h.includes("region")),
+    accountPriority: headers.findIndex((h) => h === "accountpriority"),
   };
 
   const rows: SheetAccount[] = values.slice(1)
@@ -76,6 +79,7 @@ export async function getAccountsFromSheet(force = false): Promise<SheetAccount[
       accountOwner: idx.accountOwner >= 0 ? r[idx.accountOwner] ?? "" : "",
       potentialMrr: idx.potentialMrr >= 0 ? r[idx.potentialMrr] ?? "" : "",
       marketingRegion: idx.marketingRegion >= 0 ? r[idx.marketingRegion] ?? "" : "",
+      accountPriority: idx.accountPriority >= 0 ? r[idx.accountPriority] ?? "" : "",
     }))
     .filter((r) => r.accountId);
 

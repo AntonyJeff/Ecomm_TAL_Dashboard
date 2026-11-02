@@ -5,6 +5,7 @@ export interface SheetAccount {
   accountOwner: string;
   potentialMrr: string;
   marketingRegion: string;
+  accountPriority: string;
 }
 
 export interface AccountMetrics {
