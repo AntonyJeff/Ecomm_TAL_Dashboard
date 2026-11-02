@@ -619,8 +619,6 @@ function todayIsoIST(): string {
 interface FactorsSnapshot {
   level: string;
   score: number | null;
-  /** Raw "Top Engagement Signals" text from Factors.ai - only fetched where a caller actually needs the "why" (the spike banner), left undefined elsewhere. */
-  signals?: string;
 }
 
 /** One parsed "Top Engagement Signals" entry, e.g. "Linkedin Paid Impressions 83" -> { label: "Linkedin Paid Impressions", count: 83 }. */
@@ -652,47 +650,36 @@ function parseTopEngagementSignals(raw: string): TopSignal[] {
     });
 }
 
-// Live current Engagement_Level__c / Factors_Engagement_Score__c (+ signals,
-// when requested) for every TAL account, straight from Salesforce - used
-// ONLY for "today," since the daily sheet snapshot for today doesn't exist
-// until tonight's automation run. Cached briefly, and separately per
-// with/without-signals variant, so repeated page views in the same few
-// minutes don't re-scan all 5,555 accounts on every request.
+// Live current Engagement_Level__c / Factors_Engagement_Score__c for every
+// TAL account, straight from Salesforce - used ONLY for "today" in the
+// Factor Score column (resolveFactorsScores) and the history drill-down,
+// since the daily sheet snapshot for today doesn't exist until tonight's
+// automation run. NOT used by the spike banner (computeFactorSpikes) - see
+// its comment for why a live read doesn't make sense there. Cached briefly
+// so repeated page views in the same few minutes don't re-scan all 5,555
+// accounts on every request.
 let liveFactorsCache: { computedAt: number; byAccount: Record<string, FactorsSnapshot> } | null = null;
-let liveFactorsWithSignalsCache: { computedAt: number; byAccount: Record<string, FactorsSnapshot> } | null = null;
 const LIVE_FACTORS_CACHE_TTL_MS = 5 * 60 * 1000;
 
-async function getLiveFactorsSnapshot(withSignals = false): Promise<Record<string, FactorsSnapshot>> {
-  const cache = withSignals ? liveFactorsWithSignalsCache : liveFactorsCache;
-  if (cache && Date.now() - cache.computedAt < LIVE_FACTORS_CACHE_TTL_MS) {
-    return cache.byAccount;
+async function getLiveFactorsSnapshot(): Promise<Record<string, FactorsSnapshot>> {
+  if (liveFactorsCache && Date.now() - liveFactorsCache.computedAt < LIVE_FACTORS_CACHE_TTL_MS) {
+    return liveFactorsCache.byAccount;
   }
 
   const accounts = await getAccountsFromSheet();
   const byAccount: Record<string, FactorsSnapshot> = {};
-  const fields = withSignals
-    ? "Id, Engagement_Level__c, Factors_Engagement_Score__c, Top_Engagement_Signals__c"
-    : "Id, Engagement_Level__c, Factors_Engagement_Score__c";
 
   await mapWithConcurrency(chunk(accounts.map((a) => a.accountId), 300), 8, async (idBatch) => {
     const idList = idBatch.map((id) => `'${esc(id)}'`).join(",");
-    const rows = await soqlQuery<{
-      Id: string;
-      Engagement_Level__c: string | null;
-      Factors_Engagement_Score__c: number | null;
-      Top_Engagement_Signals__c?: string | null;
-    }>(`SELECT ${fields} FROM Account WHERE Id IN (${idList})`);
+    const rows = await soqlQuery<{ Id: string; Engagement_Level__c: string | null; Factors_Engagement_Score__c: number | null }>(
+      `SELECT Id, Engagement_Level__c, Factors_Engagement_Score__c FROM Account WHERE Id IN (${idList})`
+    );
     for (const r of rows) {
-      byAccount[r.Id] = {
-        level: r.Engagement_Level__c || "",
-        score: r.Factors_Engagement_Score__c ?? null,
-        signals: withSignals ? r.Top_Engagement_Signals__c || "" : undefined,
-      };
+      byAccount[r.Id] = { level: r.Engagement_Level__c || "", score: r.Factors_Engagement_Score__c ?? null };
     }
   });
 
-  if (withSignals) liveFactorsWithSignalsCache = { computedAt: Date.now(), byAccount };
-  else liveFactorsCache = { computedAt: Date.now(), byAccount };
+  liveFactorsCache = { computedAt: Date.now(), byAccount };
   return byAccount;
 }
 
@@ -774,14 +761,19 @@ interface SpikeAccount {
  * (crossed into Warm from Cool/Ice/unscored). A account dropping a level, or
  * moving between two non-adjacent-in-rank-but-equal levels, is not a spike.
  *
- * `date` can be any day that has sheet history, OR today - if today hasn't
- * been written to the sheet yet, this goes live against Salesforce (same
- * live-vs-historical rule as resolveFactorsScores), including live signals.
+ * Deliberately NEVER goes live against Salesforce, unlike the Factor Score
+ * column - a spike is a day-over-day BATCH comparison, so a mid-day live
+ * read would show a false, premature "no change yet" (or a partial change
+ * that could still flip by end of day) and get mistaken for that day's real
+ * outcome. Until tonight's run actually happens, "today" simply isn't a day
+ * yet - so `date` with no explicit value, or a value not yet in the sheet,
+ * always resolves to the MOST RECENT day that has actually been captured.
+ * The moment tonight's sync lands, that automatically becomes the new
+ * "latest day" on the very next request - no separate live step needed.
  */
-async function computeFactorSpikes(date: string): Promise<{
-  date: string;
+async function computeFactorSpikes(requestedDate?: string): Promise<{
+  date: string | null;
   previousDate: string | null;
-  isLive: boolean;
   availableDates: string[];
   newlyHot: SpikeAccount[];
   newlyWarm: SpikeAccount[];
@@ -790,22 +782,19 @@ async function computeFactorSpikes(date: string): Promise<{
   const nameById = new Map(accounts.map((a) => [a.accountId, a.accountName]));
 
   const sheetDates = Array.from(new Set(rows.map((r) => r.runDate))).sort();
+  const date = requestedDate && sheetDates.includes(requestedDate) ? requestedDate : sheetDates.at(-1) ?? null;
+
+  if (!date) {
+    // No history captured at all yet - nothing to compare, not an error.
+    return { date: null, previousDate: null, availableDates: [], newlyHot: [], newlyWarm: [] };
+  }
+
   const previousDate = sheetDates.filter((d) => d < date).at(-1) ?? null;
 
-  const today = todayIsoIST();
-  const isLive = date === today && !sheetDates.includes(today);
-
   const toByAccount: Record<string, { level: string; score: number | null; signals: string }> = {};
-  if (isLive) {
-    const live = await getLiveFactorsSnapshot(true);
-    for (const [id, snap] of Object.entries(live)) {
-      toByAccount[id] = { level: snap.level, score: snap.score, signals: snap.signals || "" };
-    }
-  } else {
-    for (const r of rows) {
-      if (r.runDate === date) {
-        toByAccount[r.accountId] = { level: r.engagementLevel, score: r.engagementScore, signals: r.topEngagementSignals };
-      }
+  for (const r of rows) {
+    if (r.runDate === date) {
+      toByAccount[r.accountId] = { level: r.engagementLevel, score: r.engagementScore, signals: r.topEngagementSignals };
     }
   }
 
@@ -842,23 +831,18 @@ async function computeFactorSpikes(date: string): Promise<{
   newlyHot.sort((a, b) => (b.toScore ?? 0) - (a.toScore ?? 0));
   newlyWarm.sort((a, b) => (b.toScore ?? 0) - (a.toScore ?? 0));
 
-  return {
-    date,
-    previousDate,
-    isLive,
-    availableDates: isLive ? [...sheetDates, today] : sheetDates,
-    newlyHot,
-    newlyWarm,
-  };
+  return { date, previousDate, availableDates: sheetDates, newlyHot, newlyWarm };
 }
 
 // GET /api/accounts/factor-spikes?date=YYYY-MM-DD - the daily spike banner's
 // data: every account that crossed into Hot or Warm since the last available
-// snapshot before `date`. Defaults to today (IST) if no date given.
+// snapshot before `date`. Defaults to, and silently falls back to, the most
+// recently SYNCED day - never a live/in-progress "today" (see the comment on
+// computeFactorSpikes for why).
 accountsRouter.get("/factor-spikes", async (req, res) => {
   try {
-    const date = String(req.query.date || todayIsoIST());
-    if (!DATE_RE.test(date)) throw new Error("date must be YYYY-MM-DD");
+    const date = req.query.date !== undefined ? String(req.query.date) : undefined;
+    if (date !== undefined && !DATE_RE.test(date)) throw new Error("date must be YYYY-MM-DD");
     res.json(await computeFactorSpikes(date));
   } catch (err: any) {
     res.status(500).json({ error: err.message });

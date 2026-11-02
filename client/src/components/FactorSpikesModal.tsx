@@ -93,7 +93,6 @@ export function FactorSpikesModal({ initialDate, onClose }: { initialDate: strin
           {monthDates.map((d) => (
             <option key={d} value={d}>
               {d}
-              {result?.isLive && d === result.date ? " (live, today)" : ""}
             </option>
           ))}
         </select>
@@ -101,11 +100,12 @@ export function FactorSpikesModal({ initialDate, onClose }: { initialDate: strin
 
       {error && <p className="error">{error}</p>}
       {!result && !error && <p>Loading…</p>}
-      {result && (
+      {result && !result.date && <p>No Factor Score history captured yet - check back after the next daily sync.</p>}
+      {result && result.date && (
         <>
           <p className="modal-summary">
-            Compared against {result.previousDate ?? "no earlier snapshot"}
-            {result.isLive ? " - today's side is live from Salesforce, not yet written to history." : "."}
+            Showing {result.date}, compared against {result.previousDate ?? "no earlier snapshot"} - both
+            permanent, recorded history.
           </p>
           {total === 0 && <p>No accounts crossed into Hot or Warm on this day.</p>}
           <SpikeGroup title="Newly Hot" icon="🔥" accounts={result.newlyHot} />

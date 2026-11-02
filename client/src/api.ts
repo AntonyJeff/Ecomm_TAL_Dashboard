@@ -231,9 +231,9 @@ export interface SpikeAccount {
 }
 
 export interface FactorSpikesResult {
-  date: string;
+  /** The day this batch represents - always the most recently SYNCED day, never a live/in-progress "today." Null only if no sync has ever run. */
+  date: string | null;
   previousDate: string | null;
-  isLive: boolean;
   availableDates: string[];
   newlyHot: SpikeAccount[];
   newlyWarm: SpikeAccount[];
@@ -242,7 +242,10 @@ export interface FactorSpikesResult {
 /**
  * Daily "who just spiked" comparison for the spike banner - every account
  * that crossed into Hot or Warm since the last available snapshot before
- * `date`. Defaults to today when no date is given.
+ * `date`. Defaults to, and silently falls back to, the most recently synced
+ * day if `date` isn't given or hasn't been synced yet - this deliberately
+ * never shows a live/mid-day comparison (see the server's comment on
+ * computeFactorSpikes): until tonight's run happens, "today" isn't a day yet.
  */
 export function fetchFactorSpikes(date?: string) {
   const q = date ? `?date=${date}` : "";
