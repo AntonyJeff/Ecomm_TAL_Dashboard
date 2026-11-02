@@ -20,6 +20,7 @@ import { ContactsModal } from "./components/ContactsModal";
 import { TouchpointEventsModal } from "./components/TouchpointEventsModal";
 import { WebsiteSessionsModal } from "./components/WebsiteSessionsModal";
 import { FactorsHistoryModal } from "./components/FactorsHistoryModal";
+import { FactorSpikeBanner } from "./components/FactorSpikeBanner";
 import { ColumnFilter } from "./components/ColumnFilter";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { HelpModal } from "./components/HelpModal";
@@ -532,6 +533,8 @@ export default function App() {
           </div>
         </div>
       </header>
+
+      <FactorSpikeBanner />
 
       <div className="toolbar">
         <select

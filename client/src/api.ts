@@ -214,3 +214,37 @@ export interface FactorsHistoryEntry {
 export function fetchFactorsHistory(accountId: string) {
   return getJson<{ history: FactorsHistoryEntry[] }>(`/api/accounts/${accountId}/factors-history`);
 }
+
+export interface TopSignal {
+  label: string;
+  count: number | null;
+}
+
+export interface SpikeAccount {
+  accountId: string;
+  accountName: string;
+  fromLevel: string;
+  fromScore: number | null;
+  toLevel: string;
+  toScore: number | null;
+  signals: TopSignal[];
+}
+
+export interface FactorSpikesResult {
+  date: string;
+  previousDate: string | null;
+  isLive: boolean;
+  availableDates: string[];
+  newlyHot: SpikeAccount[];
+  newlyWarm: SpikeAccount[];
+}
+
+/**
+ * Daily "who just spiked" comparison for the spike banner - every account
+ * that crossed into Hot or Warm since the last available snapshot before
+ * `date`. Defaults to today when no date is given.
+ */
+export function fetchFactorSpikes(date?: string) {
+  const q = date ? `?date=${date}` : "";
+  return getJson<FactorSpikesResult>(`/api/accounts/factor-spikes${q}`);
+}
