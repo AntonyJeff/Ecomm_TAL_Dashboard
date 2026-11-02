@@ -20,10 +20,9 @@ import { ContactsModal } from "./components/ContactsModal";
 import { TouchpointEventsModal } from "./components/TouchpointEventsModal";
 import { WebsiteSessionsModal } from "./components/WebsiteSessionsModal";
 import { FactorsHistoryModal } from "./components/FactorsHistoryModal";
-import { FactorSpikeBanner } from "./components/FactorSpikeBanner";
 import { ColumnFilter } from "./components/ColumnFilter";
 import { ThemeToggle } from "./components/ThemeToggle";
-import { HelpModal } from "./components/HelpModal";
+import { FactorSpikeCard } from "./components/FactorSpikeCard";
 import { HoverCell } from "./components/HoverCell";
 import { computeEngagementScores, percentileRanks } from "./score";
 import { MetricMultiSelect } from "./components/MetricMultiSelect";
@@ -227,14 +226,12 @@ export default function App() {
   const [selectedMrr, setSelectedMrr] = useState<Set<string>>(new Set());
   const [selectedFactorLevels, setSelectedFactorLevels] = useState<Set<string>>(new Set());
   const [selectedPriorities, setSelectedPriorities] = useState<Set<string>>(new Set());
-  const [showHelp, setShowHelp] = useState(false);
   const [sortMetrics, setSortMetrics] = useState<Set<string>>(() => new Set(persisted.sortMetrics ?? []));
 
   // UI trial (redesign-tabbed-kpi branch) state - see the GROUP_TABS comment above.
   const [activeTab, setActiveTab] = useState<GroupTab>(
     () => (persisted.groupTab as GroupTab) ?? "marketing"
   );
-  const [filtersOpen, setFiltersOpen] = useState(() => persisted.filtersOpen ?? true);
 
   useEffect(() => {
     fetchAccounts()
@@ -540,8 +537,7 @@ export default function App() {
     (selectedMrr.size > 0 && selectedMrr.size < mrrOptions.length ? 1 : 0) +
     (selectedPriorities.size > 0 && selectedPriorities.size < priorityOptions.length ? 1 : 0) +
     (selectedFactorLevels.size > 0 && selectedFactorLevels.size < factorLevelOptions.length ? 1 : 0) +
-    (sortMetrics.size > 0 ? 1 : 0) +
-    (search.trim() ? 1 : 0);
+    (sortMetrics.size > 0 ? 1 : 0);
 
   // Skips its first run so it doesn't immediately wipe out a page number
   // restored from a previous session - only resets to page 0 on a genuine
@@ -589,7 +585,6 @@ export default function App() {
       sortMetrics: Array.from(sortMetrics),
       page,
       groupTab: activeTab,
-      filtersOpen,
     });
   }, [
     selectedMonth,
@@ -603,7 +598,6 @@ export default function App() {
     page,
     regionOptions.length,
     activeTab,
-    filtersOpen,
   ]);
 
   return (
@@ -618,112 +612,130 @@ export default function App() {
             </p>
           </div>
           <div className="header-actions">
-            <button className="help-btn" onClick={() => setShowHelp(true)}>
-              ? How to read this
-            </button>
             <ThemeToggle />
           </div>
         </div>
       </header>
 
-      <FactorSpikeBanner />
-
-      <div className="kpi-strip kpi-strip-solo">
-        <div className="kpi-card">
-          <div className="kpi-value kpi-factor-split">
-            {factorKpis ? (
-              <>
-                <span className="factor-hot" title="Hot">🔥{factorKpis.Hot}</span>
-                <span className="factor-warm" title="Warm">🟠{factorKpis.Warm}</span>
-                <span className="factor-cool" title="Cool">🧊{factorKpis.Cool}</span>
-                <span className="factor-ice" title="Ice">❄️{factorKpis.Ice}</span>
-              </>
-            ) : (
-              "…"
-            )}
+      <div className="bento-grid">
+        <div className="bento-card bento-factor">
+          <div className="bento-card-top">
+            <span className="bento-card-label">Factor score split</span>
+            <span className="bento-icon-badge bento-icon-factor">🌡️</span>
           </div>
-          <div className="kpi-label">Factor Score split</div>
+          {factorKpis ? (
+            <div className="bento-factor-rows">
+              <div className="bento-factor-row">
+                <span className="factor-hot">🔥 Hot</span>
+                <strong>{factorKpis.Hot}</strong>
+              </div>
+              <div className="bento-factor-row">
+                <span className="factor-warm">🟠 Warm</span>
+                <strong>{factorKpis.Warm}</strong>
+              </div>
+              <div className="bento-factor-row">
+                <span className="factor-cool">🧊 Cool</span>
+                <strong>{factorKpis.Cool}</strong>
+              </div>
+              <div className="bento-factor-row">
+                <span className="factor-ice">❄️ Ice</span>
+                <strong>{factorKpis.Ice}</strong>
+              </div>
+            </div>
+          ) : (
+            <div className="bento-card-value">…</div>
+          )}
+          <div className="bento-card-caption">across accounts matching current filters</div>
+        </div>
+
+        <FactorSpikeCard />
+
+        <div className="bento-card bento-period">
+          <div className="bento-card-top">
+            <span className="bento-card-label">Period</span>
+            <span className="bento-icon-badge bento-icon-period">📅</span>
+          </div>
+          <div className="bento-period-selects">
+            <select
+              className="week-select"
+              value={selectedMonth}
+              onChange={(e) => selectMonth(e.target.value)}
+              title="Which month's data to look at - the week selector next to it narrows within this month, or pick 'All weeks' for the full month total"
+            >
+              {monthOptions.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+            <select
+              className="week-select"
+              value={selectedWeekNum}
+              onChange={(e) => setSelectedWeekNum(e.target.value === "all" ? "all" : Number(e.target.value))}
+            >
+              <option value="all">All weeks ({monthOptions.find((m) => m.value === selectedMonth)?.label} total)</option>
+              {weeks.map((w) => (
+                <option key={w.week} value={w.week}>
+                  Week {w.week} ({w.start} to {w.end})
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="bento-card-caption">
+            {dateRange.start} to {dateRange.end}
+            {rankLoading ? " · computing…" : ""}
+          </div>
+        </div>
+
+        <div className="bento-card bento-filters">
+          <div className="bento-card-top">
+            <span className="bento-card-label">Filters</span>
+            <span className="bento-icon-badge bento-icon-filters">🔎</span>
+          </div>
+          <div className="bento-filters-row">
+            <ColumnFilter
+              label="Region"
+              options={regionOptions}
+              selected={selectedRegions}
+              onChange={setSelectedRegions}
+            />
+            <ColumnFilter
+              label="Potential MRR"
+              options={mrrOptions}
+              selected={selectedMrr}
+              onChange={setSelectedMrr}
+            />
+            <ColumnFilter
+              label="Factor Score"
+              options={factorLevelOptions}
+              selected={selectedFactorLevels}
+              onChange={setSelectedFactorLevels}
+            />
+            <ColumnFilter
+              label="Account Priority"
+              options={priorityOptions}
+              selected={selectedPriorities}
+              onChange={setSelectedPriorities}
+            />
+            <MetricMultiSelect
+              options={SORT_OPTIONS}
+              selected={sortMetrics}
+              onChange={setSortMetrics}
+              defaultLabel="Engagement filter: Score"
+            />
+          </div>
+          <div className="bento-card-caption">
+            {activeFilterCount > 0 ? `${activeFilterCount} active` : "showing everything"}
+          </div>
         </div>
       </div>
 
-      <div className="toolbar">
-        <select
-          className="week-select"
-          value={selectedMonth}
-          onChange={(e) => selectMonth(e.target.value)}
-          title="Which month's data to look at - the week selector next to it narrows within this month, or pick 'All weeks' for the full month total"
-        >
-          {monthOptions.map((m) => (
-            <option key={m.value} value={m.value}>
-              {m.label}
-            </option>
-          ))}
-        </select>
-        <select
-          className="week-select"
-          value={selectedWeekNum}
-          onChange={(e) => setSelectedWeekNum(e.target.value === "all" ? "all" : Number(e.target.value))}
-        >
-          <option value="all">All weeks ({monthOptions.find((m) => m.value === selectedMonth)?.label} total)</option>
-          {weeks.map((w) => (
-            <option key={w.week} value={w.week}>
-              Week {w.week} ({w.start} to {w.end})
-            </option>
-          ))}
-        </select>
-        <button
-          className={`filters-toggle${activeFilterCount > 0 ? " active" : ""}`}
-          onClick={() => setFiltersOpen((o) => !o)}
-        >
-          Filters{activeFilterCount > 0 ? ` (${activeFilterCount} active)` : ""} {filtersOpen ? "▾" : "▸"}
-        </button>
-        {rankLoading && (
-          <span className="loading-pill">
-            computing ranking for this week… (first time for this week can take up to a minute)
-          </span>
-        )}
-      </div>
-
-      {filtersOpen && (
-        <div className="toolbar filters-row">
-          <ColumnFilter
-            label="Region"
-            options={regionOptions}
-            selected={selectedRegions}
-            onChange={setSelectedRegions}
-          />
-          <ColumnFilter
-            label="Potential MRR"
-            options={mrrOptions}
-            selected={selectedMrr}
-            onChange={setSelectedMrr}
-          />
-          <ColumnFilter
-            label="Factor Score"
-            options={factorLevelOptions}
-            selected={selectedFactorLevels}
-            onChange={setSelectedFactorLevels}
-          />
-          <ColumnFilter
-            label="Account Priority"
-            options={priorityOptions}
-            selected={selectedPriorities}
-            onChange={setSelectedPriorities}
-          />
-          <MetricMultiSelect
-            options={SORT_OPTIONS}
-            selected={sortMetrics}
-            onChange={setSortMetrics}
-            defaultLabel="Engagement filter: Score"
-          />
-          <input
-            className="search-input"
-            placeholder="Search by account name or domain…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
-      )}
+      <input
+        className="search-input-huge"
+        placeholder="Search for any account…"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
 
       <div className="group-tabs">
         {GROUP_TABS.map((t) => (
@@ -1086,7 +1098,6 @@ export default function App() {
           onClose={() => setModal(null)}
         />
       )}
-      {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
     </div>
   );
 }

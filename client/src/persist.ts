@@ -14,7 +14,6 @@ export interface PersistedDashboardState {
   factorLevels?: string[]; // Factor Score (Hot/Warm/Cool/Ice/Not scored) filter
   sortMetrics?: string[]; // also carries "highIntent"/"mediumIntent" filter checkboxes
   groupTab?: string; // UI trial (redesign-tabbed-kpi): which column group tab was active
-  filtersOpen?: boolean; // UI trial (redesign-tabbed-kpi): collapsible filter row state
   page?: number;
 }
 

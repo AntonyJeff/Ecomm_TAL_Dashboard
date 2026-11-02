@@ -1423,3 +1423,203 @@ thead .sticky-col {
   color: var(--text-2);
   font-style: italic;
 }
+
+/* ---- Bento grid: the four top cards (Factor Score split, Daily spikes,
+   Period, Filters) replacing the old KPI strip + banner + toolbar rows ---- */
+
+.bento-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.bento-card {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  min-height: 150px;
+  box-shadow: var(--shadow-sm);
+}
+
+.bento-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.bento-card-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-2);
+}
+
+.bento-icon-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.bento-icon-factor {
+  background: rgba(255, 90, 90, 0.16);
+}
+
+.bento-icon-spike {
+  background: rgba(255, 138, 61, 0.18);
+}
+
+.bento-icon-period {
+  background: rgba(108, 92, 231, 0.18);
+}
+
+.bento-icon-filters {
+  background: rgba(77, 163, 255, 0.18);
+}
+
+.bento-card-value {
+  font-size: 32px;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1.1;
+  margin-bottom: auto;
+}
+
+.bento-card-caption {
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+/* Factor Score split card - four stacked rows instead of one big number,
+   since there isn't a single headline figure here, there are four. */
+.bento-factor-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: auto;
+}
+
+.bento-factor-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 15px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.bento-factor-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.bento-factor-row strong {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+/* Daily spike card */
+.bento-spike {
+  justify-content: flex-start;
+}
+
+.bento-spike-active {
+  border-color: rgba(255, 90, 90, 0.4);
+  background: linear-gradient(160deg, rgba(255, 90, 90, 0.08), var(--surface) 60%);
+}
+
+.bento-spike-breakdown {
+  display: flex;
+  gap: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-2);
+  margin-bottom: 16px;
+}
+
+.bento-cta {
+  align-self: flex-start;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  padding: 10px 20px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: auto;
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+
+.bento-cta:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(108, 92, 231, 0.35);
+}
+
+.bento-cta:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Period card */
+.bento-period-selects {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: auto;
+}
+
+.bento-period-selects .week-select {
+  width: 100%;
+}
+
+/* Filters card */
+.bento-filters-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: auto;
+}
+
+.search-input-huge {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 18px 24px;
+  margin-bottom: 20px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 18px;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.search-input-huge:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(108, 92, 231, 0.16);
+}
+
+.search-input-huge::placeholder {
+  color: var(--text-2);
+}
+
+@media (max-width: 900px) {
+  .bento-grid {
+    grid-template-columns: 1fr;
+  }
+}
