@@ -21,7 +21,8 @@ import { TouchpointEventsModal } from "./components/TouchpointEventsModal";
 import { WebsiteSessionsModal } from "./components/WebsiteSessionsModal";
 import { FactorsHistoryModal } from "./components/FactorsHistoryModal";
 import { ColumnFilter } from "./components/ColumnFilter";
-import { ThemeToggle } from "./components/ThemeToggle";
+import { applyTheme } from "./theme";
+import { ModernSelect } from "./components/ModernSelect";
 import { FactorSpikeCard } from "./components/FactorSpikeCard";
 import { HoverCell } from "./components/HoverCell";
 import { computeEngagementScores, percentileRanks } from "./score";
@@ -239,6 +240,15 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<GroupTab>(
     () => (persisted.groupTab as GroupTab) ?? "marketing"
   );
+
+  // UI trial (redesign-tabbed-kpi branch): leadership wants light mode only
+  // on this dashboard. Dark mode isn't deleted - the toggle, the theme.ts
+  // logic, and every dark CSS variable are all still here, just not wired
+  // up on this branch - this forces light every load, overriding whatever
+  // theme was stored from earlier testing, without touching any of that.
+  useEffect(() => {
+    applyTheme("light");
+  }, []);
 
   useEffect(() => {
     fetchAccounts()
@@ -651,31 +661,23 @@ export default function App() {
         </div>
         <div className="header-period-row">
           <span className="header-period-label">Period</span>
-          <select
-            className="week-select"
+          <ModernSelect
             value={selectedMonth}
-            onChange={(e) => selectMonth(e.target.value)}
+            onChange={selectMonth}
+            options={monthOptions.map((m) => ({ value: m.value, label: m.label }))}
             title="Which month's data to look at - the week selector next to it narrows within this month, or pick 'All weeks' for the full month total"
-          >
-            {monthOptions.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-          <select
-            className="week-select"
+          />
+          <ModernSelect
             value={selectedWeekNum}
-            onChange={(e) => setSelectedWeekNum(e.target.value === "all" ? "all" : Number(e.target.value))}
-          >
-            <option value="all">All weeks ({monthOptions.find((m) => m.value === selectedMonth)?.label} total)</option>
-            {weeks.map((w) => (
-              <option key={w.week} value={w.week}>
-                Week {w.week} ({w.start} to {w.end})
-              </option>
-            ))}
-          </select>
-          <ThemeToggle />
+            onChange={(v) => setSelectedWeekNum(v)}
+            options={[
+              {
+                value: "all" as const,
+                label: `All weeks (${monthOptions.find((m) => m.value === selectedMonth)?.label} total)`,
+              },
+              ...weeks.map((w) => ({ value: w.week, label: `Week ${w.week} (${w.start} to ${w.end})` })),
+            ]}
+          />
         </div>
       </header>
 
