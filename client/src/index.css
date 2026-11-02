@@ -1154,3 +1154,151 @@ thead .sticky-col {
   letter-spacing: 0.04em;
   color: var(--text-2);
 }
+
+/* ---- UI trial (redesign-tabbed-kpi branch): KPI strip + group tabs ---- */
+
+.kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.kpi-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+.kpi-card-highlight {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset, var(--shadow-sm);
+}
+
+.kpi-value {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.kpi-value-name {
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kpi-factor-split {
+  display: flex;
+  gap: 10px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.kpi-label {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.filters-toggle {
+  padding: 9px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 150ms ease, color 150ms ease;
+}
+
+.filters-toggle.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.filters-row {
+  margin-top: -4px;
+}
+
+.group-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.group-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 150ms ease, color 150ms ease, background 150ms ease;
+}
+
+.group-tab-count {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+
+.group-tab-marketing.active {
+  border-color: #8b7cf6;
+  color: #8b7cf6;
+  background: rgba(139, 124, 246, 0.1);
+}
+
+.group-tab-linkedin.active {
+  border-color: #4da3ff;
+  color: #4da3ff;
+  background: rgba(77, 163, 255, 0.1);
+}
+
+.group-tab-mdr.active {
+  border-color: #e8b339;
+  color: #e8b339;
+  background: rgba(232, 179, 57, 0.12);
+}
+
+.group-tab-sdr.active {
+  border-color: #2ecc9a;
+  color: #2ecc9a;
+  background: rgba(46, 204, 154, 0.12);
+}
+
+.group-tab-sales.active {
+  border-color: #4da3ff;
+  color: #4da3ff;
+  background: rgba(77, 163, 255, 0.1);
+}
+
+.group-tab.active .group-tab-count {
+  background: rgba(255, 255, 255, 0.5);
+  color: inherit;
+}
+
+:root[data-theme="dark"] .group-tab.active .group-tab-count {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .group-tab.active .group-tab-count {
+    background: rgba(0, 0, 0, 0.3);
+  }
+}
