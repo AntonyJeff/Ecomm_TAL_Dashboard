@@ -1469,7 +1469,7 @@ thead .sticky-col {
   left: 0;
   z-index: 30;
   margin-top: 8px;
-  min-width: 100%;
+  min-width: max-content;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -1486,7 +1486,7 @@ thead .sticky-col {
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 10px;
+  padding: 9px 12px;
   border: none;
   background: none;
   border-radius: 10px;
@@ -1507,10 +1507,14 @@ thead .sticky-col {
   color: var(--accent);
 }
 
+/* Label and date range sit side by side on one line - stacking them made
+   the whole menu tall enough that it needed scrolling for just a handful
+   of weeks. */
 .modern-select-option-text {
   display: flex;
-  flex-direction: column;
-  gap: 1px;
+  align-items: baseline;
+  gap: 8px;
+  white-space: nowrap;
 }
 
 .modern-select-option-label {
@@ -1522,7 +1526,7 @@ thead .sticky-col {
 }
 
 /* The date range used to be crammed into the label itself in parentheses
-   ("Week 2 (2026-11-02 to 2026-11-08)") - now it's its own quieter line. */
+   ("Week 2 (2026-11-02 to 2026-11-08)") - now it's a quieter inline suffix. */
 .modern-select-option-sublabel {
   font-size: 11px;
   font-weight: 400;
