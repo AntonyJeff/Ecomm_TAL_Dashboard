@@ -1,8 +1,10 @@
 import { google } from "googleapis";
 
-const SHEET_ID = process.env.GOOGLE_SHEET_ID!;
-const SHEET_TAB = process.env.GOOGLE_SHEET_TAB || "Global";
 const ENGAGEMENT_SHEET_ID = process.env.ENGAGEMENT_SHEET_ID!;
+// Everything now lives in one spreadsheet (ENGAGEMENT_SHEET_ID) as separate tabs -
+// the TAL account roster was migrated into its own "Global_Ecomm_TAL" tab there.
+const SHEET_ID = ENGAGEMENT_SHEET_ID;
+const SHEET_TAB = process.env.GOOGLE_SHEET_TAB || "Global_Ecomm_TAL";
 
 function getAuth() {
   const privateKey = (process.env.GOOGLE_PRIVATE_KEY || "").replace(/\\n/g, "\n");

@@ -2,8 +2,9 @@
 Daily Factors.ai engagement snapshot sync.
 
 What this does, every time it runs:
-  1. Reads the live TAL account list (5,555+ accounts) from the "Global" tab
-     of the main Google Sheet - the same source the dashboard itself uses.
+  1. Reads the live TAL account list (5,555+ accounts) from the
+     "Global_Ecomm_TAL" tab of the engagement Google Sheet - the same source
+     the dashboard itself uses. (Everything now lives in one spreadsheet.)
   2. Queries Salesforce for every Factors.ai-related field on those Account
      records (Engagement_Level__c - Hot/Warm/Cold/Ice - plus the raw score,
      score bucket, last engagement date, and a few related text fields).
@@ -24,7 +25,7 @@ Scheduled (e.g. GitHub Actions cron) - needs these as secrets/env vars,
 same values as server/.env:
     SF_LOGIN_URL, SF_CONSUMER_KEY, SF_CONSUMER_SECRET
     GOOGLE_CLIENT_EMAIL, GOOGLE_PRIVATE_KEY
-    GOOGLE_SHEET_ID (account list), ENGAGEMENT_SHEET_ID (where this writes)
+    ENGAGEMENT_SHEET_ID (single sheet: account list + where this writes)
 """
 
 import argparse
@@ -48,9 +49,10 @@ SF_CONSUMER_SECRET = os.environ["SF_CONSUMER_SECRET"]
 
 GOOGLE_CLIENT_EMAIL = os.environ["GOOGLE_CLIENT_EMAIL"]
 GOOGLE_PRIVATE_KEY = os.environ["GOOGLE_PRIVATE_KEY"].replace("\\n", "\n")
-GOOGLE_SHEET_ID = os.environ["GOOGLE_SHEET_ID"]
-GOOGLE_SHEET_TAB = os.environ.get("GOOGLE_SHEET_TAB", "Global")
 ENGAGEMENT_SHEET_ID = os.environ["ENGAGEMENT_SHEET_ID"]
+# The account roster and this script's output now live in the same spreadsheet.
+GOOGLE_SHEET_ID = ENGAGEMENT_SHEET_ID
+GOOGLE_SHEET_TAB = os.environ.get("GOOGLE_SHEET_TAB", "Global_Ecomm_TAL")
 
 FACTORS_SHEET_TAB = "Factors_Score"
 SOQL_BATCH_SIZE = 300  # stays well under Salesforce's IN-list/URL length limits
