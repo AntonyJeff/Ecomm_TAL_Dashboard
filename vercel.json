@@ -8,10 +8,6 @@
     "server": {
       "root": "server",
       "framework": "express"
-    },
-    "automation": {
-      "root": "automation",
-      "runtime": "python"
     }
   },
   "rewrites": [
