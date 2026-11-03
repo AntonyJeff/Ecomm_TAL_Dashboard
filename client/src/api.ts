@@ -1,6 +1,13 @@
 import type { ContactRow, EmailEvent, SheetAccount } from "./types";
 
-async function getJson<T>(url: string): Promise<T> {
+// Empty in local dev (Vite's proxy forwards /api to localhost:4000 - see
+// vite.config.ts). In production the client and server are two separate
+// deployments (client on Vercel, server on Render), so this must point at
+// the server's real URL - set via VITE_API_BASE_URL at build time.
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
+
+async function getJson<T>(path: string): Promise<T> {
+  const url = `${API_BASE}${path}`;
   const res = await fetch(url);
   if (!res.ok) {
     const body = await res.text();
