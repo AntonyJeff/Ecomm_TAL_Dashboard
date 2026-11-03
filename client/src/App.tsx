@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   fetchAccounts,
   fetchContactCounts,
@@ -20,10 +20,10 @@ import { ContactsModal } from "./components/ContactsModal";
 import { TouchpointEventsModal } from "./components/TouchpointEventsModal";
 import { WebsiteSessionsModal } from "./components/WebsiteSessionsModal";
 import { FactorsHistoryModal } from "./components/FactorsHistoryModal";
-import { FactorSpikeBanner } from "./components/FactorSpikeBanner";
 import { ColumnFilter } from "./components/ColumnFilter";
-import { ThemeToggle } from "./components/ThemeToggle";
-import { HelpModal } from "./components/HelpModal";
+import { applyTheme } from "./theme";
+import { ModernSelect } from "./components/ModernSelect";
+import { FactorSpikeCard } from "./components/FactorSpikeCard";
 import { HoverCell } from "./components/HoverCell";
 import { computeEngagementScores, percentileRanks } from "./score";
 import { MetricMultiSelect } from "./components/MetricMultiSelect";
@@ -40,6 +40,22 @@ const MARKETING_TOUCHPOINT_KEYS = TOUCHPOINT_KEYS.filter((k) => TOUCHPOINT_SOURC
 const MDR_TOUCHPOINT_KEYS = TOUCHPOINT_KEYS.filter((k) => TOUCHPOINT_SOURCE[k] === "mdr");
 const SDR_TOUCHPOINT_KEYS = TOUCHPOINT_KEYS.filter((k) => TOUCHPOINT_SOURCE[k] === "sdr");
 const SALES_TOUCHPOINT_KEYS = TOUCHPOINT_KEYS.filter((k) => TOUCHPOINT_SOURCE[k] === "sales");
+
+// UI TRIAL (branch: redesign-tabbed-kpi): column groups used to all sit side
+// by side, needing constant horizontal scrolling to compare Marketing vs.
+// LinkedIn vs. MDR vs. SDR vs. Sales. This swaps that for a tab switcher -
+// one group's columns shown at a time, frozen columns unaffected - plus a KPI
+// strip above the table so a quick glance doesn't require picking a tab at
+// all. If this doesn't work out, `git checkout main` throws it all away
+// cleanly since it was built on its own branch.
+type GroupTab = "marketing" | "linkedin" | "mdr" | "sdr" | "sales";
+const GROUP_TABS: { key: GroupTab; label: string }[] = [
+  { key: "marketing", label: "Marketing" },
+  { key: "linkedin", label: "LinkedIn" },
+  { key: "mdr", label: "MDR" },
+  { key: "sdr", label: "SDR" },
+  { key: "sales", label: "Sales" },
+];
 
 const LINKEDIN_COLUMNS: { key: keyof LinkedinMetrics; label: string }[] = [
   { key: "organicImpressions", label: "LI Organic Impr. (7d)" },
@@ -133,6 +149,13 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/** Renders a touchpoint/LinkedIn count as "–" for a real zero, so actual activity stands out instead of a page full of zeros. */
+function fmtMetric(n: number | undefined): ReactNode {
+  if (n === undefined) return "…";
+  if (n === 0) return <span className="metric-zero">–</span>;
+  return n;
+}
+
 function factorClass(level: string | undefined): string {
   if (level === "Hot") return "factor-hot";
   if (level === "Warm") return "factor-warm";
@@ -211,8 +234,21 @@ export default function App() {
   const [selectedMrr, setSelectedMrr] = useState<Set<string>>(new Set());
   const [selectedFactorLevels, setSelectedFactorLevels] = useState<Set<string>>(new Set());
   const [selectedPriorities, setSelectedPriorities] = useState<Set<string>>(new Set());
-  const [showHelp, setShowHelp] = useState(false);
   const [sortMetrics, setSortMetrics] = useState<Set<string>>(() => new Set(persisted.sortMetrics ?? []));
+
+  // UI trial (redesign-tabbed-kpi branch) state - see the GROUP_TABS comment above.
+  const [activeTab, setActiveTab] = useState<GroupTab>(
+    () => (persisted.groupTab as GroupTab) ?? "marketing"
+  );
+
+  // UI trial (redesign-tabbed-kpi branch): leadership wants light mode only
+  // on this dashboard. Dark mode isn't deleted - the toggle, the theme.ts
+  // logic, and every dark CSS variable are all still here, just not wired
+  // up on this branch - this forces light every load, overriding whatever
+  // theme was stored from earlier testing, without touching any of that.
+  useEffect(() => {
+    applyTheme("light");
+  }, []);
 
   useEffect(() => {
     fetchAccounts()
@@ -474,6 +510,52 @@ export default function App() {
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const visible = filtered.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
 
+  // UI trial (redesign-tabbed-kpi): Factor Score split for the KPI strip -
+  // computed over every currently-filtered account (not just the visible
+  // page), so the glance view reflects the whole filtered set.
+  const factorKpis = useMemo(() => {
+    if (!factorsReady) return null;
+    const counts = { Hot: 0, Warm: 0, Cool: 0, Ice: 0 };
+    for (const a of filtered) {
+      const level = factorsScores[a.accountId]?.level;
+      if (level && level in counts) counts[level as keyof typeof counts]++;
+    }
+    return counts;
+  }, [filtered, factorsReady, factorsScores]);
+
+  // UI trial (redesign-tabbed-kpi): each tab shows a running total for its
+  // group across every filtered account, so switching away to another tab
+  // doesn't lose all sense of "is there activity I'm not looking at."
+  const tabAggregates = useMemo(() => {
+    if (!ranksReady) return null;
+    const sumKeys = (keys: TouchpointKey[]) =>
+      filtered.reduce((sum, a) => sum + keys.reduce((s, k) => s + (ranks[a.accountId]?.[k] ?? 0), 0), 0);
+    const marketing =
+      filtered.reduce((sum, a) => sum + (ranks[a.accountId]?.websiteSessions ?? 0), 0) +
+      sumKeys(MARKETING_TOUCHPOINT_KEYS);
+    let linkedin = 0;
+    if (currentLiSnapshot) {
+      for (const a of filtered) {
+        const li = currentLiSnapshot.metrics[a.accountId];
+        if (li) linkedin += li.organicEngagements + li.paidEngagements + li.paidClicks;
+      }
+    }
+    return {
+      marketing,
+      linkedin,
+      mdr: sumKeys(MDR_TOUCHPOINT_KEYS),
+      sdr: sumKeys(SDR_TOUCHPOINT_KEYS),
+      sales: sumKeys(SALES_TOUCHPOINT_KEYS),
+    };
+  }, [filtered, ranksReady, ranks, currentLiSnapshot]);
+
+  const activeFilterCount =
+    (selectedRegions.size > 0 && selectedRegions.size < regionOptions.length ? 1 : 0) +
+    (selectedMrr.size > 0 && selectedMrr.size < mrrOptions.length ? 1 : 0) +
+    (selectedPriorities.size > 0 && selectedPriorities.size < priorityOptions.length ? 1 : 0) +
+    (selectedFactorLevels.size > 0 && selectedFactorLevels.size < factorLevelOptions.length ? 1 : 0) +
+    (sortMetrics.size > 0 ? 1 : 0);
+
   // Skips its first run so it doesn't immediately wipe out a page number
   // restored from a previous session - only resets to page 0 on a genuine
   // later change to one of these.
@@ -519,6 +601,7 @@ export default function App() {
       factorLevels: Array.from(selectedFactorLevels),
       sortMetrics: Array.from(sortMetrics),
       page,
+      groupTab: activeTab,
     });
   }, [
     selectedMonth,
@@ -531,7 +614,38 @@ export default function App() {
     sortMetrics,
     page,
     regionOptions.length,
+    activeTab,
   ]);
+
+  const periodLabel = selectedWeekNum === "all" ? "This month" : "This week";
+  const groupHeaderLabel =
+    activeTab === "marketing"
+      ? `Marketing Engagement · ${periodLabel}`
+      : activeTab === "linkedin"
+      ? "LinkedIn · Last 7 days"
+      : activeTab === "mdr"
+      ? `MDR Engagement · ${periodLabel}`
+      : activeTab === "sdr"
+      ? `SDR Engagement · ${periodLabel}`
+      : `Sales Engagement · ${periodLabel}`;
+  const groupColCount =
+    activeTab === "marketing"
+      ? 1 + MARKETING_TOUCHPOINT_KEYS.length
+      : activeTab === "linkedin"
+      ? LINKEDIN_COLUMNS.length
+      : activeTab === "mdr"
+      ? MDR_TOUCHPOINT_KEYS.length
+      : activeTab === "sdr"
+      ? SDR_TOUCHPOINT_KEYS.length
+      : SALES_TOUCHPOINT_KEYS.length;
+
+  function clearAllFilters() {
+    setSelectedRegions(new Set(regionOptions));
+    setSelectedMrr(new Set(mrrOptions));
+    setSelectedPriorities(new Set(priorityOptions));
+    setSelectedFactorLevels(new Set(factorLevelOptions));
+    setSortMetrics(new Set());
+  }
 
   return (
     <div className="app">
@@ -540,95 +654,147 @@ export default function App() {
           <div>
             <h1>Ecomm TAL Dashboard</h1>
             <p className="subtitle">
-              {accounts.length.toLocaleString()} accounts · pick a month, then a week or the whole
-              month · LinkedIn shows the most recent data available as of that period
+              {accounts.length.toLocaleString()} accounts · LinkedIn shows the most recent data
+              available as of the selected period
             </p>
           </div>
-          <div className="header-actions">
-            <button className="help-btn" onClick={() => setShowHelp(true)}>
-              ? How to read this
-            </button>
-            <ThemeToggle />
-          </div>
+        </div>
+        <div className="header-period-row">
+          <span className="header-period-label">Period</span>
+          <ModernSelect
+            value={selectedMonth}
+            onChange={selectMonth}
+            options={monthOptions.map((m) => ({ value: m.value, label: m.label }))}
+            title="Which month's data to look at - the week selector next to it narrows within this month, or pick 'All weeks' for the full month total"
+          />
+          <ModernSelect
+            value={selectedWeekNum}
+            onChange={(v) => setSelectedWeekNum(v)}
+            options={[
+              {
+                value: "all" as const,
+                label: "All weeks",
+                sublabel: `${monthOptions.find((m) => m.value === selectedMonth)?.label} total`,
+              },
+              ...weeks.map((w) => ({
+                value: w.week,
+                label: `Week ${w.week}`,
+                sublabel: `${w.start} to ${w.end}`,
+              })),
+            ]}
+          />
         </div>
       </header>
 
-      <FactorSpikeBanner />
+      <div className="kpi-row">
+        <div className="bento-card">
+          <div className="bento-card-top">
+            <span className="bento-card-label">Factor score split</span>
+            <span className="bento-card-meta">{filtered.length.toLocaleString()} accounts match filters</span>
+          </div>
+          {factorKpis ? (
+            <>
+              <div className="factor-bar">
+                {(() => {
+                  const total = factorKpis.Hot + factorKpis.Warm + factorKpis.Cool + factorKpis.Ice;
+                  const pct = (n: number) => (total > 0 ? (n / total) * 100 : 0);
+                  return (
+                    <>
+                      <div
+                        className="factor-bar-segment factor-bar-hot"
+                        style={{ flexBasis: `${pct(factorKpis.Hot)}%` }}
+                      />
+                      <div
+                        className="factor-bar-segment factor-bar-warm"
+                        style={{ flexBasis: `${pct(factorKpis.Warm)}%` }}
+                      />
+                      <div
+                        className="factor-bar-segment factor-bar-cool"
+                        style={{ flexBasis: `${pct(factorKpis.Cool)}%` }}
+                      />
+                      <div
+                        className="factor-bar-segment factor-bar-ice"
+                        style={{ flexBasis: `${pct(factorKpis.Ice)}%` }}
+                      />
+                    </>
+                  );
+                })()}
+              </div>
+              <div className="factor-legend">
+                {(
+                  [
+                    ["Hot", factorKpis.Hot, "factor-bar-hot"],
+                    ["Warm", factorKpis.Warm, "factor-bar-warm"],
+                    ["Cool", factorKpis.Cool, "factor-bar-cool"],
+                    ["Ice", factorKpis.Ice, "factor-bar-ice"],
+                  ] as const
+                ).map(([label, value, dotClass]) => (
+                  <div key={label} className="factor-legend-item">
+                    <div className="factor-legend-dot-row">
+                      <span className={`factor-legend-dot ${dotClass}`} />
+                      {label}
+                    </div>
+                    <div className={`factor-legend-value${value === 0 ? " factor-legend-value-zero" : ""}`}>
+                      {value}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="bento-card-meta">…</div>
+          )}
+        </div>
 
-      <div className="toolbar">
-        <select
-          className="week-select"
-          value={selectedMonth}
-          onChange={(e) => selectMonth(e.target.value)}
-          title="Which month's data to look at - the week selector next to it narrows within this month, or pick 'All weeks' for the full month total"
-        >
-          {monthOptions.map((m) => (
-            <option key={m.value} value={m.value}>
-              {m.label}
-            </option>
-          ))}
-        </select>
-        <select
-          className="week-select"
-          value={selectedWeekNum}
-          onChange={(e) => setSelectedWeekNum(e.target.value === "all" ? "all" : Number(e.target.value))}
-        >
-          <option value="all">All weeks ({monthOptions.find((m) => m.value === selectedMonth)?.label} total)</option>
-          {weeks.map((w) => (
-            <option key={w.week} value={w.week}>
-              Week {w.week} ({w.start} to {w.end})
-            </option>
-          ))}
-        </select>
-        <ColumnFilter
-          label="Region"
-          options={regionOptions}
-          selected={selectedRegions}
-          onChange={setSelectedRegions}
-        />
-        <ColumnFilter
-          label="Potential MRR"
-          options={mrrOptions}
-          selected={selectedMrr}
-          onChange={setSelectedMrr}
-        />
-        <ColumnFilter
-          label="Factor Score"
-          options={factorLevelOptions}
-          selected={selectedFactorLevels}
-          onChange={setSelectedFactorLevels}
-        />
-        <ColumnFilter
-          label="Account Priority"
-          options={priorityOptions}
-          selected={selectedPriorities}
-          onChange={setSelectedPriorities}
-        />
-        <MetricMultiSelect
-          options={SORT_OPTIONS}
-          selected={sortMetrics}
-          onChange={setSortMetrics}
-          defaultLabel="Engagement filter: Score"
-        />
+        <FactorSpikeCard />
+      </div>
+
+      <div className="search-filter-bar">
         <input
-          className="search-input"
-          placeholder="Search by account name or domain…"
+          className="search-input-huge"
+          placeholder="Search account, domain or owner"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        {rankLoading && (
-          <span className="loading-pill">
-            computing ranking for this week… (first time for this week can take up to a minute)
-          </span>
-        )}
+        <div className="filter-chips-row">
+          <ColumnFilter
+            label="Region"
+            options={regionOptions}
+            selected={selectedRegions}
+            onChange={setSelectedRegions}
+          />
+          <ColumnFilter
+            label="Potential MRR"
+            options={mrrOptions}
+            selected={selectedMrr}
+            onChange={setSelectedMrr}
+          />
+          <ColumnFilter
+            label="Factor Score"
+            options={factorLevelOptions}
+            selected={selectedFactorLevels}
+            onChange={setSelectedFactorLevels}
+          />
+          <ColumnFilter
+            label="Account Priority"
+            options={priorityOptions}
+            selected={selectedPriorities}
+            onChange={setSelectedPriorities}
+          />
+          <MetricMultiSelect
+            options={SORT_OPTIONS}
+            selected={sortMetrics}
+            onChange={setSortMetrics}
+            defaultLabel="Engagement: Score"
+          />
+          {activeFilterCount > 0 && (
+            <button className="clear-all-link" onClick={clearAllFilters}>
+              Clear all
+            </button>
+          )}
+        </div>
       </div>
 
-      {weekIncludesToday && (
-        <p className="warning">
-          Heads up: email and WhatsApp activity syncs into Salesforce ~1 day behind. The most
-          recent day or two in this week may still be incomplete.
-        </p>
-      )}
       {loadError && <p className="error">{loadError}</p>}
 
       {sortMetrics.size > 0 && (
@@ -661,6 +827,31 @@ export default function App() {
         </p>
       )}
 
+      <div className="table-head-row">
+        <div className="group-tabs">
+          {GROUP_TABS.map((t) => (
+            <button
+              key={t.key}
+              className={`group-tab${activeTab === t.key ? " active" : ""}`}
+              onClick={() => setActiveTab(t.key)}
+            >
+              {t.label}
+              {tabAggregates && (
+                <span className="group-tab-count">{tabAggregates[t.key].toLocaleString()}</span>
+              )}
+            </button>
+          ))}
+        </div>
+        {weekIncludesToday && (
+          <span
+            className="sync-lag-note"
+            title="Email and WhatsApp activity syncs into Salesforce ~1 day behind. The most recent day or two in this week may still be incomplete."
+          >
+            Email &amp; WhatsApp data lags ~1 day
+          </span>
+        )}
+      </div>
+
       <div className="table-scroll">
       <table className="account-table">
         <thead>
@@ -669,23 +860,20 @@ export default function App() {
               Account
             </th>
             <th className="sticky-col sticky-col-2" rowSpan={2}>
-              Domain
-            </th>
-            <th className="sticky-col sticky-col-3" rowSpan={2}>
               Owner
             </th>
-            <th className="sticky-col sticky-col-4" rowSpan={2}>
-              # Contacts
+            <th className="sticky-col sticky-col-3" rowSpan={2}>
+              Contacts
             </th>
             <th
-              className="sticky-col sticky-col-5"
+              className="sticky-col sticky-col-4"
               rowSpan={2}
-              title="Weighted priority score (0-100) - marketing engagement only (see “How to read this” for the formula). Frozen alongside the identifiers since it's the deciding factor for prioritizing accounts, not just another metric to scroll past."
+              title="Weighted priority score (0-100) - marketing engagement only. Frozen alongside the identifiers since it's the deciding factor for prioritizing accounts, not just another metric to scroll past."
             >
               Score
             </th>
             <th
-              className="sticky-col sticky-col-6"
+              className="sticky-col sticky-col-5"
               rowSpan={2}
               title={
                 factorsIsLive
@@ -693,59 +881,56 @@ export default function App() {
                   : `Factors.ai Engagement Level as of ${factorsAsOfDate ?? "the selected period"} - permanent history, click for the full day-by-day trend.`
               }
             >
-              Factor Score
+              Factor
             </th>
-            <th
-              colSpan={1 + MARKETING_TOUCHPOINT_KEYS.length + LINKEDIN_COLUMNS.length}
-              className="group-header group-header-marketing"
-            >
-              Marketing
-            </th>
-            <th colSpan={MDR_TOUCHPOINT_KEYS.length} className="group-header group-header-mdr">
-              MDR
-            </th>
-            <th colSpan={SDR_TOUCHPOINT_KEYS.length} className="group-header group-header-sdr">
-              SDR
-            </th>
-            <th colSpan={SALES_TOUCHPOINT_KEYS.length} className="group-header group-header-sales">
-              Sales
+            <th colSpan={groupColCount} className="group-header">
+              {groupHeaderLabel}
             </th>
           </tr>
           <tr>
-            <th className="group-col-marketing"># Website sessions</th>
-            {MARKETING_TOUCHPOINT_KEYS.map((k) => (
-              <th key={k} className="group-col-marketing">
-                # {TOUCHPOINTS[k]}
-              </th>
-            ))}
-            {LINKEDIN_COLUMNS.map((c) => (
-              <th
-                key={c.key}
-                className="linkedin-col-header"
-                title={
-                  currentLiSnapshot
-                    ? `Last 7 days: ${currentLiSnapshot.windowStart} to ${currentLiSnapshot.asOfDate} (pushed ${currentLiSnapshot.receivedDate})`
-                    : "No LinkedIn data available yet as of this week"
-                }
-              >
-                {c.label}
-              </th>
-            ))}
-            {MDR_TOUCHPOINT_KEYS.map((k) => (
-              <th key={k} className="group-col-mdr">
-                # {TOUCHPOINTS[k]}
-              </th>
-            ))}
-            {SDR_TOUCHPOINT_KEYS.map((k) => (
-              <th key={k} className="group-col-sdr">
-                # {TOUCHPOINTS[k]}
-              </th>
-            ))}
-            {SALES_TOUCHPOINT_KEYS.map((k) => (
-              <th key={k} className="group-col-sales">
-                # {TOUCHPOINTS[k]}
-              </th>
-            ))}
+            {/* Only the active tab's columns render - a single group header above spans whichever set is showing. */}
+            {activeTab === "marketing" && (
+              <>
+                <th className="group-col-marketing">Website sessions</th>
+                {MARKETING_TOUCHPOINT_KEYS.map((k) => (
+                  <th key={k} className="group-col-marketing">
+                    {TOUCHPOINTS[k]}
+                  </th>
+                ))}
+              </>
+            )}
+            {activeTab === "linkedin" &&
+              LINKEDIN_COLUMNS.map((c) => (
+                <th
+                  key={c.key}
+                  className="linkedin-col-header"
+                  title={
+                    currentLiSnapshot
+                      ? `Last 7 days: ${currentLiSnapshot.windowStart} to ${currentLiSnapshot.asOfDate} (pushed ${currentLiSnapshot.receivedDate})`
+                      : "No LinkedIn data available yet as of this week"
+                  }
+                >
+                  {c.label}
+                </th>
+              ))}
+            {activeTab === "mdr" &&
+              MDR_TOUCHPOINT_KEYS.map((k) => (
+                <th key={k} className="group-col-mdr">
+                  {TOUCHPOINTS[k]}
+                </th>
+              ))}
+            {activeTab === "sdr" &&
+              SDR_TOUCHPOINT_KEYS.map((k) => (
+                <th key={k} className="group-col-sdr">
+                  {TOUCHPOINTS[k]}
+                </th>
+              ))}
+            {activeTab === "sales" &&
+              SALES_TOUCHPOINT_KEYS.map((k) => (
+                <th key={k} className="group-col-sales">
+                  {TOUCHPOINTS[k]}
+                </th>
+              ))}
           </tr>
         </thead>
         <tbody>
@@ -756,26 +941,26 @@ export default function App() {
             return (
               <tr key={a.accountId}>
                 <td className="cell-account sticky-col sticky-col-1">
-                  {instanceUrl ? (
-                    <a
-                      href={`${instanceUrl}/lightning/r/Account/${a.accountId}/view`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="account-link"
-                    >
+                  <div className="cell-account-stack">
+                    {instanceUrl ? (
+                      <a
+                        href={`${instanceUrl}/lightning/r/Account/${a.accountId}/view`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="account-link"
+                      >
+                        <HoverCell text={a.accountName} />
+                      </a>
+                    ) : (
                       <HoverCell text={a.accountName} />
-                    </a>
-                  ) : (
-                    <HoverCell text={a.accountName} />
-                  )}
+                    )}
+                    <span className="cell-account-domain">{a.website}</span>
+                  </div>
                 </td>
-                <td className="cell-domain sticky-col sticky-col-2">
-                  <HoverCell text={a.website} />
-                </td>
-                <td className="cell-owner sticky-col sticky-col-3">
+                <td className="cell-owner sticky-col sticky-col-2">
                   <HoverCell text={a.accountOwner} />
                 </td>
-                <td className="sticky-col sticky-col-4">
+                <td className="sticky-col sticky-col-3">
                   <button
                     className="metric-btn"
                     disabled={contacts === undefined}
@@ -786,7 +971,7 @@ export default function App() {
                     {contacts !== undefined ? contacts : "…"}
                   </button>
                 </td>
-                <td className="sticky-col sticky-col-5">
+                <td className="sticky-col sticky-col-4">
                   {engagementScores && scoreTiers ? (
                     <span
                       className={
@@ -805,7 +990,7 @@ export default function App() {
                     "…"
                   )}
                 </td>
-                <td className="sticky-col sticky-col-6">
+                <td className="sticky-col sticky-col-5">
                   {factorsReady ? (
                     <button
                       className={`factor-pill ${factorClass(factorsScores[a.accountId]?.level)}`}
@@ -816,115 +1001,123 @@ export default function App() {
                     >
                       {factorsScores[a.accountId]?.level || "—"}
                       {factorsScores[a.accountId]?.score !== undefined && factorsScores[a.accountId]?.score !== null
-                        ? ` (${factorsScores[a.accountId]!.score})`
+                        ? ` ${factorsScores[a.accountId]!.score}`
                         : ""}
                     </button>
                   ) : (
                     "…"
                   )}
                 </td>
-                <td className="group-col-marketing">
-                  <button
-                    className={`metric-btn${
-                      r && r.highIntentSessions > 0
-                        ? " metric-btn-fire"
-                        : r && r.mediumIntentSessions > 0
-                        ? " metric-btn-sun"
-                        : ""
-                    }`}
-                    disabled={!r}
-                    title={
-                      r && r.highIntentSessions > 0
-                        ? "Visited a high-intent page this period"
-                        : r && r.mediumIntentSessions > 0
-                        ? "Visited a medium-intent page this period"
-                        : undefined
-                    }
-                    onClick={() =>
-                      setModal({ kind: "website", accountId: a.accountId, accountName: a.accountName })
-                    }
-                  >
-                    {r && r.highIntentSessions > 0 && <span className="fire-icon">🔥</span>}
-                    {r && r.highIntentSessions === 0 && r.mediumIntentSessions > 0 && (
-                      <span className="fire-icon">☀️</span>
-                    )}
-                    {r ? r.websiteSessions : "…"}
-                  </button>
-                </td>
-                {MARKETING_TOUCHPOINT_KEYS.map((k) => (
-                  <td key={k} className="group-col-marketing">
-                    <button
-                      className="metric-btn"
-                      disabled={!r}
-                      onClick={() =>
-                        setModal({
-                          kind: "touchpoint",
-                          touchpoint: k,
-                          accountId: a.accountId,
-                          accountName: a.accountName,
-                        })
+                {activeTab === "marketing" && (
+                  <>
+                    <td className="group-col-marketing">
+                      <button
+                        className={`metric-btn${
+                          r && r.highIntentSessions > 0
+                            ? " metric-btn-fire"
+                            : r && r.mediumIntentSessions > 0
+                            ? " metric-btn-sun"
+                            : ""
+                        }`}
+                        disabled={!r}
+                        title={
+                          r && r.highIntentSessions > 0
+                            ? "Visited a high-intent page this period"
+                            : r && r.mediumIntentSessions > 0
+                            ? "Visited a medium-intent page this period"
+                            : undefined
+                        }
+                        onClick={() =>
+                          setModal({ kind: "website", accountId: a.accountId, accountName: a.accountName })
+                        }
+                      >
+                        {r && r.highIntentSessions > 0 && <span className="fire-icon">🔥</span>}
+                        {r && r.highIntentSessions === 0 && r.mediumIntentSessions > 0 && (
+                          <span className="fire-icon">☀️</span>
+                        )}
+                        {fmtMetric(r?.websiteSessions)}
+                      </button>
+                    </td>
+                    {MARKETING_TOUCHPOINT_KEYS.map((k) => (
+                      <td key={k} className="group-col-marketing">
+                        <button
+                          className="metric-btn"
+                          disabled={!r}
+                          onClick={() =>
+                            setModal({
+                              kind: "touchpoint",
+                              touchpoint: k,
+                              accountId: a.accountId,
+                              accountName: a.accountName,
+                            })
+                          }
+                        >
+                          {fmtMetric(r?.[k])}
+                        </button>
+                      </td>
+                    ))}
+                  </>
+                )}
+                {activeTab === "linkedin" &&
+                  LINKEDIN_COLUMNS.map((c) => (
+                    <td key={c.key} className="linkedin-col">
+                      {fmtMetric(li ? li[c.key] : currentLiSnapshot ? 0 : undefined)}
+                    </td>
+                  ))}
+                {activeTab === "mdr" &&
+                  MDR_TOUCHPOINT_KEYS.map((k) => (
+                    <td key={k} className="group-col-mdr">
+                      <button
+                        className="metric-btn"
+                        disabled={!r}
+                        onClick={() =>
+                          setModal({
+                            kind: "touchpoint",
+                            touchpoint: k,
+                            accountId: a.accountId,
+                            accountName: a.accountName,
+                          })
+                        }
+                      >
+                        {fmtMetric(r?.[k])}
+                      </button>
+                    </td>
+                  ))}
+                {activeTab === "sdr" &&
+                  SDR_TOUCHPOINT_KEYS.map((k) => (
+                    <td key={k} className="group-col-sdr">
+                      <button
+                        className="metric-btn"
+                        disabled={!r}
+                        onClick={() =>
+                          setModal({
+                            kind: "touchpoint",
+                            touchpoint: k,
+                            accountId: a.accountId,
+                            accountName: a.accountName,
+                          })
+                        }
+                      >
+                        {fmtMetric(r?.[k])}
+                      </button>
+                    </td>
+                  ))}
+                {activeTab === "sales" &&
+                  SALES_TOUCHPOINT_KEYS.map((k) => (
+                    <td key={k} className="group-col-sales">
+                      <button
+                        className="metric-btn"
+                        disabled={!r}
+                        onClick={() =>
+                          setModal({
+                            kind: "touchpoint",
+                            touchpoint: k,
+                            accountId: a.accountId,
+                            accountName: a.accountName,
+                          })
                       }
                     >
-                      {r ? r[k] : "…"}
-                    </button>
-                  </td>
-                ))}
-                {LINKEDIN_COLUMNS.map((c) => (
-                  <td key={c.key} className="linkedin-col">
-                    {li ? li[c.key] : currentLiSnapshot ? 0 : "—"}
-                  </td>
-                ))}
-                {MDR_TOUCHPOINT_KEYS.map((k) => (
-                  <td key={k} className="group-col-mdr">
-                    <button
-                      className="metric-btn"
-                      disabled={!r}
-                      onClick={() =>
-                        setModal({
-                          kind: "touchpoint",
-                          touchpoint: k,
-                          accountId: a.accountId,
-                          accountName: a.accountName,
-                        })
-                      }
-                    >
-                      {r ? r[k] : "…"}
-                    </button>
-                  </td>
-                ))}
-                {SDR_TOUCHPOINT_KEYS.map((k) => (
-                  <td key={k} className="group-col-sdr">
-                    <button
-                      className="metric-btn"
-                      disabled={!r}
-                      onClick={() =>
-                        setModal({
-                          kind: "touchpoint",
-                          touchpoint: k,
-                          accountId: a.accountId,
-                          accountName: a.accountName,
-                        })
-                      }
-                    >
-                      {r ? r[k] : "…"}
-                    </button>
-                  </td>
-                ))}
-                {SALES_TOUCHPOINT_KEYS.map((k) => (
-                  <td key={k} className="group-col-sales">
-                    <button
-                      className="metric-btn"
-                      disabled={!r}
-                      onClick={() =>
-                        setModal({
-                          kind: "touchpoint",
-                          touchpoint: k,
-                          accountId: a.accountId,
-                          accountName: a.accountName,
-                        })
-                      }
-                    >
-                      {r ? r[k] : "…"}
+                      {fmtMetric(r?.[k])}
                     </button>
                   </td>
                 ))}
@@ -979,7 +1172,6 @@ export default function App() {
           onClose={() => setModal(null)}
         />
       )}
-      {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
     </div>
   );
 }

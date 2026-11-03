@@ -1,3 +1,7 @@
+/* UI trial (redesign-tabbed-kpi branch): Netcore-style navy + orange palette,
+   replacing the purple accent used everywhere else - per an exact reference
+   mockup the user asked to replicate (navy cards, orange accent/active
+   states, no purple). */
 :root {
   color-scheme: dark;
   --page: #0a0c16;
@@ -6,8 +10,8 @@
   --text: #e2e8f0;
   --text-2: #94a3b8;
   --muted: #4a5568;
-  --accent: #6c5ce7;
-  --accent-2: #a29bfe;
+  --accent: #ff6a3d;
+  --accent-2: #ffb020;
   --accent-pink: #ff6fa5;
   --accent-amber: #ffc75f;
   --accent-blue: #4da3ff;
@@ -28,8 +32,8 @@
   --text: #201c34;
   --text-2: #6f6a8c;
   --muted: #9691b4;
-  --accent: #6c5ce7;
-  --accent-2: #00c2a8;
+  --accent: #ff6a3d;
+  --accent-2: #e2650a;
   --border: rgba(32, 28, 52, 0.08);
   --shadow: 0 8px 30px rgba(32, 28, 52, 0.12);
   --shadow-sm: 0 2px 10px rgba(32, 28, 52, 0.08);
@@ -62,6 +66,10 @@ body {
   padding: 28px 32px 70px;
 }
 
+.app-header {
+  margin-bottom: 28px;
+}
+
 .app-header-row {
   display: flex;
   align-items: flex-start;
@@ -82,7 +90,7 @@ body {
 .subtitle {
   margin: 0 0 20px;
   color: var(--text-2);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .header-actions {
@@ -98,7 +106,7 @@ body {
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text-2);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   transition: border-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
@@ -112,7 +120,7 @@ body {
 
 .help-content h4 {
   margin: 16px 0 6px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--accent-2);
 }
 
@@ -122,7 +130,7 @@ body {
 
 .help-content p {
   margin: 0 0 4px;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.6;
   color: var(--text);
 }
@@ -131,7 +139,7 @@ body {
   display: inline-block;
   padding: 1px 8px;
   border-radius: 6px;
-  background: rgba(108, 92, 231, 0.12);
+  background: rgba(255, 106, 61, 0.12);
   color: var(--accent-2);
 }
 
@@ -181,7 +189,7 @@ body {
   border: 1px solid var(--border);
   background: var(--surface-2);
   color: var(--text);
-  font-size: 13px;
+  font-size: 14px;
   transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 
@@ -190,7 +198,7 @@ body {
 .modal-search:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(108, 92, 231, 0.18);
+  box-shadow: 0 0 0 3px rgba(255, 106, 61, 0.18);
 }
 
 .toolbar select {
@@ -199,18 +207,18 @@ body {
   border: 1px solid var(--border);
   background: var(--surface-2);
   color: var(--text);
-  font-size: 13px;
+  font-size: 14px;
   transition: border-color 150ms ease;
 }
 
 .loading-pill {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-2);
 }
 
 .error {
   color: #ff6b6b;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .link-btn {
@@ -225,7 +233,7 @@ body {
 
 .warning {
   color: var(--accent-amber, #d9a441);
-  font-size: 12px;
+  font-size: 13px;
   background: rgba(255, 199, 95, 0.1);
   border: 1px solid rgba(255, 199, 95, 0.25);
   border-radius: 10px;
@@ -236,7 +244,7 @@ body {
 .table-scroll {
   overflow-x: auto;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 0 0 14px 14px;
   box-shadow: var(--shadow-sm);
 }
 
@@ -245,7 +253,7 @@ body {
   width: 100%;
   border-collapse: collapse;
   background: var(--surface);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .detail-table {
@@ -259,7 +267,7 @@ body {
 .account-table td,
 .detail-table th,
 .detail-table td {
-  padding: 10px 14px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--border);
   text-align: left;
   white-space: nowrap;
@@ -268,7 +276,7 @@ body {
 .account-table th {
   color: var(--text-2);
   font-weight: 600;
-  font-size: 11px;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   background: var(--surface-2);
@@ -279,7 +287,7 @@ body {
 }
 
 .account-table tbody tr:hover {
-  background: rgba(108, 92, 231, 0.07);
+  background: rgba(255, 106, 61, 0.07);
 }
 
 .account-table tbody tr:last-child td {
@@ -298,7 +306,7 @@ body {
 }
 
 .metric-btn:hover:not(:disabled) {
-  background: rgba(108, 92, 231, 0.16);
+  background: rgba(255, 106, 61, 0.16);
 }
 
 .metric-btn:active:not(:disabled) {
@@ -371,7 +379,7 @@ body {
   align-items: center;
   gap: 14px;
   margin-top: 16px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-2);
 }
 
@@ -468,7 +476,7 @@ body {
 }
 
 .modal-eyebrow {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -476,7 +484,7 @@ body {
 }
 
 .modal-badge {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   padding: 3px 10px;
   border-radius: 999px;
@@ -517,7 +525,7 @@ body {
 }
 
 .modal-close:hover {
-  background: rgba(108, 92, 231, 0.12);
+  background: rgba(255, 106, 61, 0.12);
   color: var(--text);
 }
 
@@ -530,7 +538,7 @@ body {
 }
 
 .modal-summary {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-2);
   margin: -4px 0 10px;
 }
@@ -569,7 +577,7 @@ body {
   top: 50%;
   transform: translateY(-50%);
   color: var(--text-2);
-  font-size: 13px;
+  font-size: 14px;
   pointer-events: none;
 }
 
@@ -596,7 +604,7 @@ body {
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  background: rgba(108, 92, 231, 0.14);
+  background: rgba(255, 106, 61, 0.14);
   color: var(--accent-2);
   display: flex;
   align-items: center;
@@ -637,7 +645,7 @@ body {
 }
 
 .timeline-card-clickable:hover {
-  background: rgba(108, 92, 231, 0.06);
+  background: rgba(255, 106, 61, 0.06);
 }
 
 .timeline-card-clickable:focus-visible {
@@ -651,7 +659,7 @@ body {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 14px 16px;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.6;
   color: var(--text);
 }
@@ -688,7 +696,7 @@ body {
 
 .timeline-card-subtitle {
   margin-top: 3px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--accent-2);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -697,7 +705,7 @@ body {
 
 .timeline-card-caption {
   margin-top: 6px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-2);
   display: flex;
   align-items: center;
@@ -711,7 +719,7 @@ body {
 
 .timeline-pill {
   flex-shrink: 0;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   padding: 3px 10px;
   border-radius: 999px;
@@ -719,7 +727,7 @@ body {
 }
 
 .timeline-pill-neutral {
-  background: rgba(108, 92, 231, 0.14);
+  background: rgba(255, 106, 61, 0.14);
   color: var(--accent-2);
 }
 
@@ -741,7 +749,7 @@ body {
 .badge-active,
 .badge-inactive {
   display: inline-block;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   padding: 3px 10px;
   border-radius: 999px;
@@ -765,13 +773,29 @@ body {
   cursor: default;
 }
 
-.cell-account,
-.cell-domain {
-  max-width: 220px;
+.cell-account {
+  max-width: 230px;
+}
+
+.cell-account-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cell-account-domain {
+  font-size: 12px;
+  color: var(--text-2);
+  font-weight: 400;
+  max-width: 230px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cell-owner {
-  max-width: 140px;
+  max-width: 160px;
+  color: var(--accent-blue);
 }
 
 /* Frozen left columns: Account + Domain stay put while the rest of the
@@ -788,48 +812,43 @@ thead .sticky-col {
   background: var(--surface-2);
 }
 
+/* Domain merged into the Account cell (stacked underneath the name) per the
+   reference mockup, so there are only 5 frozen columns now, not 6. */
 .sticky-col-1 {
   left: 0;
-  width: 200px;
-  min-width: 200px;
-  max-width: 200px;
+  width: 230px;
+  min-width: 230px;
+  max-width: 230px;
 }
 
 .sticky-col-2 {
-  left: 200px;
-  width: 180px;
-  min-width: 180px;
-  max-width: 180px;
+  left: 230px;
+  width: 160px;
+  min-width: 160px;
+  max-width: 160px;
 }
 
 .sticky-col-3 {
-  left: 380px;
-  width: 140px;
-  min-width: 140px;
-  max-width: 140px;
+  left: 390px;
+  width: 94px;
+  min-width: 94px;
+  max-width: 94px;
+  text-align: right;
 }
 
 .sticky-col-4 {
-  left: 520px;
-  width: 76px;
-  min-width: 76px;
-  max-width: 76px;
+  left: 484px;
+  width: 94px;
+  min-width: 94px;
+  max-width: 94px;
   text-align: center;
 }
 
 .sticky-col-5 {
-  left: 596px;
-  width: 76px;
-  min-width: 76px;
-  max-width: 76px;
-  text-align: center;
-}
-
-.sticky-col-6 {
-  left: 672px;
-  width: 100px;
-  min-width: 100px;
-  max-width: 100px;
+  left: 578px;
+  width: 136px;
+  min-width: 136px;
+  max-width: 136px;
   text-align: center;
   border-right: 1px solid var(--border);
 }
@@ -840,10 +859,15 @@ thead .sticky-col {
   padding: 3px 8px;
   border-radius: 999px;
   font-weight: 700;
-  font-size: 11px;
+  font-size: 12px;
   border: none;
   cursor: pointer;
   font-family: inherit;
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+
+.factor-pill:hover {
+  transform: scale(1.06);
 }
 
 .factor-hot {
@@ -862,8 +886,8 @@ thead .sticky-col {
 }
 
 .factor-ice {
-  background: rgba(150, 190, 230, 0.16);
-  color: #96bee6;
+  background: rgba(148, 163, 184, 0.16);
+  color: #94a3b8;
 }
 
 .factor-unscored {
@@ -877,28 +901,28 @@ thead .sticky-col {
   padding: 3px 8px;
   border-radius: 999px;
   font-weight: 700;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .score-high {
-  background: rgba(0, 194, 168, 0.16);
-  color: var(--accent-2, #00c2a8);
+  background: rgba(46, 204, 154, 0.16);
+  color: #2ecc9a;
 }
 
 .score-mid {
   background: rgba(255, 199, 95, 0.16);
-  color: var(--accent-amber, #e8b339);
+  color: #e8b339;
 }
 
 .score-low {
-  background: rgba(255, 111, 165, 0.14);
-  color: var(--accent-pink, #ff6fa5);
+  background: rgba(255, 90, 90, 0.14);
+  color: #ff5a5a;
 }
 
 .account-table tbody tr:hover .sticky-col {
   /* Opaque tint over the solid surface color, so scrolled content behind
      the frozen columns still stays fully hidden on hover. */
-  background: linear-gradient(rgba(108, 92, 231, 0.1), rgba(108, 92, 231, 0.1)), var(--surface);
+  background: linear-gradient(rgba(255, 106, 61, 0.1), rgba(255, 106, 61, 0.1)), var(--surface);
 }
 
 .account-link {
@@ -937,7 +961,7 @@ thead .sticky-col {
   padding: 6px 10px;
   box-shadow: var(--shadow);
   white-space: nowrap;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text);
   z-index: 30;
   user-select: text;
@@ -959,76 +983,45 @@ thead .sticky-col {
   border: 1px solid var(--border);
   background: var(--surface-2);
   color: var(--text);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   transition: border-color 150ms ease;
 }
 
 .linkedin-col-header {
-  background: rgba(108, 92, 231, 0.08) !important;
+  text-align: right;
 }
 
 .linkedin-col {
   color: var(--text-2);
+  text-align: right;
 }
 
-/* Four-way effort grouping: Marketing / MDR / SDR / Sales, each a visually
-   distinct, clearly colored section - a banner-style header per group plus a
-   faint matching tint down every cell in that section, so leaders can tell
-   at a glance which team drove which number without reading every label. */
+/* Only one group's columns ever render at a time now (the active tab), so a
+   single plain label spanning them is enough - no per-group color banner or
+   per-cell tint needed any more (there's no adjacent group to tell it apart
+   from). Numbers right-align so they line up, per the reference mockup. */
 .group-header {
-  text-align: center;
-  font-weight: 800;
-  letter-spacing: 0.08em;
+  text-align: left;
+  font-weight: 700;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   font-size: 11px;
+  color: var(--accent);
+  background: var(--surface-2);
   padding-top: 8px;
   padding-bottom: 8px;
-  box-shadow: inset 0 -3px 0 0 var(--group-color);
 }
 
-.group-header-marketing {
-  --group-color: #8b7cf6;
-  background: rgba(139, 124, 246, 0.14);
-  color: #8b7cf6;
-  border-left: 2px solid var(--border);
-}
-
-.group-header-mdr {
-  --group-color: #e8b339;
-  background: rgba(232, 179, 57, 0.16);
-  color: #e8b339;
-  border-left: 2px solid var(--border);
-}
-
-.group-header-sdr {
-  --group-color: #2ecc9a;
-  background: rgba(46, 204, 154, 0.16);
-  color: #2ecc9a;
-  border-left: 2px solid var(--border);
-}
-
-.group-header-sales {
-  --group-color: #4da3ff;
-  background: rgba(77, 163, 255, 0.16);
-  color: #4da3ff;
-  border-left: 2px solid var(--border);
-}
-
-.group-col-marketing {
-  background: rgba(139, 124, 246, 0.04);
-}
-
-.group-col-mdr {
-  background: rgba(232, 179, 57, 0.06);
-}
-
-.group-col-sdr {
-  background: rgba(46, 204, 154, 0.06);
-}
-
+.group-col-marketing,
+.group-col-mdr,
+.group-col-sdr,
 .group-col-sales {
-  background: rgba(77, 163, 255, 0.06);
+  text-align: right;
+}
+
+.metric-zero {
+  color: var(--muted);
 }
 
 .col-filter {
@@ -1036,36 +1029,66 @@ thead .sticky-col {
   display: inline-block;
 }
 
+/* Chip-styled trigger (per the reference mockup) - dashed + "+ Label" when
+   this filter is at its default/unfiltered state, solid orange + an inline
+   × to instantly reset once it's actually narrowed. The dropdown itself
+   (col-filter-menu below) is unchanged - only the trigger's look changed. */
 .col-filter-trigger {
-  background: none;
-  border: none;
-  color: var(--text-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  font-size: 13px;
   font-weight: 600;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
   cursor: pointer;
-  padding: 0;
+  padding: 7px 14px;
   white-space: nowrap;
-  transition: color 150ms ease;
+  transition: border-color 150ms ease, background 150ms ease, color 150ms ease;
+  border: 1px dashed var(--border);
+  background: transparent;
+  color: var(--text-2);
+}
+
+.col-filter-trigger:hover {
+  border-color: var(--text-2);
 }
 
 .col-filter-trigger.active {
-  color: var(--accent-2);
+  border: 1px solid rgba(255, 106, 61, 0.5);
+  background: rgba(255, 106, 61, 0.12);
+  color: var(--accent);
+}
+
+.col-filter-trigger.active:hover {
+  border-color: var(--accent);
 }
 
 .col-filter-caret {
-  font-size: 10px;
+  font-size: 11px;
+}
+
+.filter-chip-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 2px;
+  opacity: 0.75;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.filter-chip-x:hover {
+  opacity: 1;
 }
 
 @keyframes menu-in {
   from {
     opacity: 0;
-    transform: translateY(-4px);
+    transform: translateY(-6px) scale(0.98);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
   }
 }
 
@@ -1074,85 +1097,195 @@ thead .sticky-col {
   top: 100%;
   left: 0;
   z-index: 20;
-  margin-top: 6px;
+  margin-top: 8px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 14px;
   box-shadow: var(--shadow);
-  min-width: 180px;
-  max-height: 280px;
+  min-width: 210px;
+  max-height: 300px;
   display: flex;
   flex-direction: column;
   text-transform: none;
   letter-spacing: normal;
   font-weight: 400;
-  animation: menu-in 140ms ease-out;
+  padding: 6px;
+  animation: menu-in 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: top left;
 }
 
 .col-filter-actions {
   display: flex;
   gap: 6px;
-  padding: 8px;
+  padding: 4px 4px 8px;
+  margin-bottom: 4px;
   border-bottom: 1px solid var(--border);
 }
 
 .col-filter-actions button {
   flex: 1;
-  font-size: 11px;
-  padding: 5px 6px;
-  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 10px;
+  border-radius: 999px;
   border: 1px solid var(--border);
   background: var(--surface-2);
-  color: var(--text);
+  color: var(--text-2);
   cursor: pointer;
-  transition: border-color 150ms ease;
+  transition: border-color 150ms ease, color 150ms ease, background-color 150ms ease;
 }
 
 .col-filter-actions button:hover {
   border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(255, 106, 61, 0.08);
 }
 
 .col-filter-list {
   overflow-y: auto;
-  padding: 6px 4px;
+  padding: 2px;
 }
 
 .col-filter-option {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
+  gap: 10px;
+  padding: 8px 10px;
   font-size: 13px;
-  border-radius: 8px;
+  font-weight: 500;
+  border-radius: 10px;
   cursor: pointer;
-  transition: background-color 120ms ease;
+  transition: background-color 150ms ease, transform 100ms ease;
 }
 
 .col-filter-option:hover {
-  background: rgba(108, 92, 231, 0.1);
+  background: rgba(255, 106, 61, 0.1);
+  transform: translateX(2px);
 }
 
-.metric-multiselect-trigger {
+/* Custom checkbox - a native checkbox's own default appearance clashes with
+   the rest of this dashboard's styling and can't be restyled consistently
+   across browsers otherwise. */
+.col-filter-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  border: 1.5px solid var(--border);
+  background: var(--surface-2);
   cursor: pointer;
+  position: relative;
+  transition: background-color 150ms ease, border-color 150ms ease, transform 100ms ease;
 }
 
-.metric-multiselect-trigger.active {
+.col-filter-checkbox:hover {
   border-color: var(--accent);
-  color: var(--accent-2);
+}
+
+.col-filter-checkbox:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+  transform: scale(1.05);
+}
+
+.col-filter-checkbox:checked::after {
+  content: "✓";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .metric-multiselect-menu {
-  min-width: 260px;
+  min-width: 270px;
   max-height: 360px;
 }
 
 .col-filter-group-label {
-  padding: 8px 8px 2px;
-  font-size: 10px;
+  padding: 10px 10px 4px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+}
+
+
+/* Tabs sit directly on the table's top edge, underlined style - not pill
+   buttons floating above it - per the reference mockup. All five use the
+   same uniform active treatment (orange underline + white text); the
+   per-group color coding that used to distinguish the tabs themselves is
+   gone now that only one group's columns are ever visible at a time. */
+.table-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 14px 14px 0 0;
+  padding: 0 20px;
+}
+
+.group-tabs {
+  display: flex;
+  gap: 22px;
+  flex-wrap: wrap;
+}
+
+.group-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 0 12px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
   color: var(--text-2);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color 150ms ease, border-color 150ms ease;
+}
+
+.group-tab-count {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+
+.group-tab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.group-tab.active .group-tab-count {
+  background: rgba(255, 106, 61, 0.18);
+  color: var(--accent);
+}
+
+.sync-lag-note {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-2);
+  white-space: nowrap;
+  cursor: help;
+}
+
+.sync-lag-note::before {
+  content: "•";
+  color: var(--accent);
+  margin-right: 6px;
 }
 
 /* ---- Daily Factor Score spike banner ---- */
@@ -1160,41 +1293,59 @@ thead .sticky-col {
 .spike-banner {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 14px;
   flex-wrap: wrap;
   width: 100%;
   text-align: left;
   font: inherit;
-  font-size: 13px;
+  font-size: 16px;
   color: var(--text-2);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 10px 14px;
-  margin-bottom: 14px;
+  border-radius: 14px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
   cursor: pointer;
-  transition: border-color 150ms ease, background 150ms ease;
+  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
 }
 
 .spike-banner:hover {
   border-color: var(--accent);
+  transform: translateY(-1px);
 }
 
+/* Deliberately styled very differently from every other element on the
+   dashboard - a bold, impossible-to-miss alert strip, not another quiet
+   toolbar control, since the whole point is that someone opening the
+   dashboard first thing in the morning sees this before anything else. */
 .spike-banner-active {
-  color: #ff5a5a;
-  background: rgba(255, 90, 90, 0.08);
-  border-color: rgba(255, 90, 90, 0.35);
-  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(90deg, #ff5a5a 0%, #ff8a3d 100%);
+  border: none;
+  font-weight: 800;
+  font-size: 17px;
+  padding: 18px 22px;
+  box-shadow: 0 6px 24px rgba(255, 90, 90, 0.35);
+}
+
+.spike-banner-active:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(255, 90, 90, 0.45);
 }
 
 .spike-banner-sep {
-  opacity: 0.5;
+  opacity: 0.6;
 }
 
 .spike-banner-cta {
   margin-left: auto;
-  font-weight: 700;
+  font-weight: 800;
   color: var(--accent);
+}
+
+.spike-banner-active .spike-banner-cta {
+  color: #fff;
+  text-decoration: underline;
 }
 
 .spike-date-row {
@@ -1202,12 +1353,12 @@ thead .sticky-col {
   align-items: center;
   gap: 10px;
   margin-bottom: 12px;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .spike-group-title {
   margin: 18px 0 8px;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .spike-signals {
@@ -1215,7 +1366,7 @@ thead .sticky-col {
 }
 
 .spike-signals-label {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -1231,7 +1382,7 @@ thead .sticky-col {
 }
 
 .spike-signal-chip {
-  font-size: 11px;
+  font-size: 12px;
   padding: 2px 8px;
   border-radius: 999px;
   background: var(--surface-2);
@@ -1240,7 +1391,365 @@ thead .sticky-col {
 }
 
 .spike-signals-note {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-2);
   font-style: italic;
+}
+
+/* ---- Header period row - Month/Week selectors live next to the title now,
+   since the period applies to the whole page, not one card among others ---- */
+.header-period-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.header-period-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-2);
+  margin-right: 4px;
+}
+
+/* ---- Modern select: replaces the native Month/Week <select> with a themed
+   trigger + animated popover, since a native select's own popup can't be
+   styled to match the rest of the dashboard in most browsers. ---- */
+.modern-select {
+  position: relative;
+  display: inline-block;
+}
+
+.modern-select-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
+}
+
+.modern-select-trigger:hover {
+  border-color: var(--accent);
+}
+
+.modern-select-trigger.open {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(255, 106, 61, 0.14);
+}
+
+.modern-select-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.modern-select-caret {
+  font-size: 11px;
+  color: var(--text-2);
+  transition: transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.modern-select-trigger.open .modern-select-caret {
+  transform: rotate(180deg);
+  color: var(--accent);
+}
+
+.modern-select-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 30;
+  margin-top: 8px;
+  min-width: max-content;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  padding: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+  animation: menu-in 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: top center;
+}
+
+.modern-select-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  border: none;
+  background: none;
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 150ms ease, transform 100ms ease;
+}
+
+.modern-select-option:hover {
+  background: rgba(255, 106, 61, 0.1);
+  transform: translateX(2px);
+}
+
+.modern-select-option.selected {
+  color: var(--accent);
+}
+
+/* Label and date range sit side by side on one line - stacking them made
+   the whole menu tall enough that it needed scrolling for just a handful
+   of weeks. */
+.modern-select-option-text {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.modern-select-option-label {
+  font-weight: 600;
+}
+
+.modern-select-option.selected .modern-select-option-label {
+  font-weight: 700;
+}
+
+/* The date range used to be crammed into the label itself in parentheses
+   ("Week 2 (2026-11-02 to 2026-11-08)") - now it's a quieter inline suffix. */
+.modern-select-option-sublabel {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-2);
+}
+
+.modern-select-check {
+  width: 14px;
+  flex-shrink: 0;
+  color: var(--accent);
+  font-size: 12px;
+}
+
+/* ---- KPI row: Factor Score split (bar, not a tall list) + Daily spikes,
+   side by side - replaces the old 2x2 bento grid ---- */
+.kpi-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.bento-card {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-sm);
+  transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease;
+}
+
+.bento-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow);
+  border-color: rgba(255, 106, 61, 0.25);
+}
+
+.bento-card-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.bento-card-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-2);
+}
+
+.bento-card-meta {
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+/* Factor Score split - one proportional horizontal bar, segments sized by
+   each level's share of the total, plus a dot+number legend underneath. */
+.factor-bar {
+  display: flex;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--surface-2);
+  margin-bottom: 20px;
+}
+
+.factor-bar-segment {
+  transition: flex-basis 200ms ease;
+}
+
+.factor-bar-hot {
+  background: #ff5a5a;
+}
+
+.factor-bar-warm {
+  background: #ffaa3c;
+}
+
+.factor-bar-cool {
+  background: #5aa0ff;
+}
+
+.factor-bar-ice {
+  background: #64748b;
+}
+
+.factor-legend {
+  display: flex;
+  gap: 32px;
+}
+
+.factor-legend-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.factor-legend-dot-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.factor-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.factor-legend-value {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.factor-legend-value-zero {
+  color: var(--muted);
+}
+
+/* Daily spikes card - compact: number, breakdown, text link (not a button) */
+.spike-card-value {
+  font-size: 32px;
+  font-weight: 800;
+  color: var(--accent);
+  line-height: 1.1;
+}
+
+.spike-card-breakdown {
+  font-size: 13px;
+  color: var(--text-2);
+  margin-top: 4px;
+  margin-bottom: 16px;
+}
+
+.spike-card-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: left;
+  margin-top: auto;
+}
+
+.spike-card-link:hover {
+  text-decoration: underline;
+}
+
+.spike-card-link:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ---- Sticky search + filter chips bar ---- */
+.search-filter-bar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: var(--page);
+  padding-top: 4px;
+  padding-bottom: 12px;
+  margin-bottom: 4px;
+}
+
+.search-input-huge {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 16px 22px;
+  margin-bottom: 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 15px;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.search-input-huge:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(255, 106, 61, 0.16);
+}
+
+.search-input-huge::placeholder {
+  color: var(--text-2);
+}
+
+.filter-chips-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.clear-all-link {
+  background: none;
+  border: none;
+  padding: 6px 4px;
+  color: var(--text-2);
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.clear-all-link:hover {
+  color: var(--text);
+}
+
+@media (max-width: 900px) {
+  .kpi-row {
+    grid-template-columns: 1fr;
+  }
 }

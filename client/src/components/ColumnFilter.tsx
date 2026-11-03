@@ -53,7 +53,22 @@ export function ColumnFilter({
         onClick={() => setOpen((o) => !o)}
         title={`Filter ${label}`}
       >
-        {active ? `${label}: ${selectionSummary()}` : label} <span className="col-filter-caret">▾</span>
+        {active ? (
+          <>
+            {label}: {selectionSummary()}
+            <span
+              className="filter-chip-x"
+              onClick={(e) => {
+                e.stopPropagation();
+                onChange(new Set(options));
+              }}
+            >
+              ×
+            </span>
+          </>
+        ) : (
+          <>+ {label}</>
+        )}
       </button>
       {open && (
         <div className="col-filter-menu">
@@ -64,7 +79,12 @@ export function ColumnFilter({
           <div className="col-filter-list">
             {options.map((opt) => (
               <label key={opt} className="col-filter-option">
-                <input type="checkbox" checked={selected.has(opt)} onChange={() => toggle(opt)} />
+                <input
+                  type="checkbox"
+                  className="col-filter-checkbox"
+                  checked={selected.has(opt)}
+                  onChange={() => toggle(opt)}
+                />
                 {opt}
               </label>
             ))}

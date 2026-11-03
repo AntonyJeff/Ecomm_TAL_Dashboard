@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { fetchFactorSpikes, type FactorSpikesResult, type SpikeAccount } from "../api";
 import { Modal } from "./Modal";
 import { Timeline, TimelineItem } from "./Timeline";
+import { ModernSelect } from "./ModernSelect";
 
 const LEVEL_ICON: Record<string, string> = { Hot: "🔥", Warm: "🟠" };
 
@@ -83,19 +84,12 @@ export function FactorSpikesModal({ initialDate, onClose }: { initialDate: strin
       onClose={onClose}
     >
       <div className="spike-date-row">
-        <label htmlFor="spike-date-select">Date:</label>
-        <select
-          id="spike-date-select"
-          className="week-select"
+        <label>Date:</label>
+        <ModernSelect
           value={selectedDate}
-          onChange={(e) => setSelectedDate(e.target.value)}
-        >
-          {monthDates.map((d) => (
-            <option key={d} value={d}>
-              {d}
-            </option>
-          ))}
-        </select>
+          onChange={setSelectedDate}
+          options={monthDates.map((d) => ({ value: d, label: d }))}
+        />
       </div>
 
       {error && <p className="error">{error}</p>}
