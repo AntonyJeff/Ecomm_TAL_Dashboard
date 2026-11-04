@@ -12,6 +12,7 @@ export function ColumnFilter({
   selected,
   onChange,
   dotClassFor,
+  subLabelFor,
 }: {
   label: string;
   options: string[];
@@ -19,6 +20,8 @@ export function ColumnFilter({
   onChange: (next: Set<string>) => void;
   /** Optional per-option color dot (e.g. Hot/Warm/Cool/Ice), same colors used in the Factor Score Split card. */
   dotClassFor?: (opt: string) => string | undefined;
+  /** Optional per-option muted sublabel, shown right-aligned next to the option (e.g. its official score range). */
+  subLabelFor?: (opt: string) => string | undefined;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -82,6 +85,7 @@ export function ColumnFilter({
           <div className="col-filter-list">
             {options.map((opt) => {
               const dotClass = dotClassFor?.(opt);
+              const subLabel = subLabelFor?.(opt);
               return (
                 <label key={opt} className="col-filter-option">
                   <input
@@ -91,7 +95,8 @@ export function ColumnFilter({
                     onChange={() => toggle(opt)}
                   />
                   {dotClass && <span className={`col-filter-dot ${dotClass}`} />}
-                  {opt}
+                  <span className="col-filter-option-label">{opt}</span>
+                  {subLabel && <span className="col-filter-count">{subLabel}</span>}
                 </label>
               );
             })}

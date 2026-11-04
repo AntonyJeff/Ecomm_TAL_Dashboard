@@ -260,23 +260,26 @@ export interface SpikeAccount {
 }
 
 export interface FactorSpikesResult {
-  /** The day this batch represents - always the most recently SYNCED day, never a live/in-progress "today." Null only if no sync has ever run. */
+  /** The most recently SYNCED day within the requested week - never a live/in-progress "today." Null only if no day in that week has been captured yet. */
   date: string | null;
+  /** The last snapshot before the week started - the baseline every spike in this week is measured against. */
   previousDate: string | null;
+  /** Every day within this week that's actually been synced so far. */
   availableDates: string[];
   newlyHot: SpikeAccount[];
   newlyWarm: SpikeAccount[];
 }
 
 /**
- * Daily "who just spiked" comparison for the spike banner - every account
- * that crossed into Hot or Warm since the last available snapshot before
- * `date`. Defaults to, and silently falls back to, the most recently synced
- * day if `date` isn't given or hasn't been synced yet - this deliberately
- * never shows a live/mid-day comparison (see the server's comment on
- * computeFactorSpikes): until tonight's run happens, "today" isn't a day yet.
+ * "Who just spiked" comparison for one week (same Week 1/2/3... boundaries
+ * as the rest of the dashboard) - every account that crossed into Hot or
+ * Warm at any point during that week, compared against wherever it stood
+ * right before the week began. For the current, still-running week this
+ * naturally fills in more each day as tonight's sync lands - this
+ * deliberately never shows a live/mid-day comparison (see the server's
+ * comment on computeFactorSpikes): until tonight's run happens, today isn't
+ * a day yet.
  */
-export function fetchFactorSpikes(date?: string) {
-  const q = date ? `?date=${date}` : "";
-  return getJson<FactorSpikesResult>(`/api/accounts/factor-spikes${q}`);
+export function fetchFactorSpikes(range: DateRange) {
+  return getJson<FactorSpikesResult>(`/api/accounts/factor-spikes?${rangeParams(range)}`);
 }

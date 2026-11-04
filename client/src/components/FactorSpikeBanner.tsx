@@ -1,24 +1,26 @@
 import { useEffect, useState } from "react";
 import { fetchFactorSpikes } from "../api";
 import { FactorSpikesModal } from "./FactorSpikesModal";
+import { monthWeeks, currentWeekNumber } from "../weeks";
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
 /**
- * Daily "who just heated up" banner - fetched once per page load, every day,
- * so whoever opens the dashboard first thing in the morning sees it without
- * digging through filters. Clicking it opens the full breakdown, with a date
- * picker scoped to the current month so yesterday's batch stays its own
- * fixed, separate thing from today's.
+ * "Who just heated up" banner for the week in progress - fetched once per
+ * page load, every day, so whoever opens the dashboard first thing in the
+ * morning sees it without digging through filters. Clicking it opens the
+ * full breakdown, with a Week picker (same Week 1/2/3... boundaries as the
+ * rest of the dashboard) so earlier weeks stay their own fixed, separate
+ * thing from the week still in progress.
  *
- * Always shows the most recently SYNCED day, never today mid-day - a spike
- * is a batch day-over-day comparison, and until tonight's run actually
- * happens there's no "today" result yet to show (see the server's comment
- * on computeFactorSpikes). The moment tonight's sync lands, this same
- * request naturally starts returning today as the latest day - no separate
- * step needed.
+ * Always shows the most recently SYNCED day within the current week, never
+ * today mid-day - a spike is a batch day-over-day comparison, and until
+ * tonight's run actually happens there's no "today" result yet to show (see
+ * the server's comment on computeFactorSpikes). The moment tonight's sync
+ * lands, this same request naturally starts reflecting it - no separate step
+ * needed.
  */
 export function FactorSpikeBanner() {
   const [hotCount, setHotCount] = useState<number | null>(null);
@@ -29,7 +31,9 @@ export function FactorSpikeBanner() {
 
   useEffect(() => {
     let cancelled = false;
-    fetchFactorSpikes()
+    const weeks = monthWeeks(new Date());
+    const week = weeks.find((w) => w.week === currentWeekNumber(weeks, todayIso())) ?? weeks[weeks.length - 1];
+    fetchFactorSpikes({ start: week.start, end: week.end })
       .then((r) => {
         if (cancelled) return;
         setHotCount(r.newlyHot.length);
@@ -43,16 +47,16 @@ export function FactorSpikeBanner() {
   }, []);
 
   if (error) return null; // non-critical widget - fail quietly rather than block the whole dashboard
-  if (hotCount === null || warmCount === null || date === null) return null; // still loading, or no sync has ever run
+  if (hotCount === null || warmCount === null) return null; // still loading, or no sync has ever run
 
   const total = hotCount + warmCount;
-  const asOfLabel = date === todayIso() ? "today" : `as of ${date}`;
+  const asOfLabel = date ? (date === todayIso() ? "today" : `as of ${date}`) : "this week";
 
   return (
     <>
       <button className={`spike-banner${total > 0 ? " spike-banner-active" : ""}`} onClick={() => setOpen(true)}>
         {total === 0 ? (
-          <>No major engagement spikes {asOfLabel} - click to check any day this month</>
+          <>No major engagement spikes this week so far - click to browse by week</>
         ) : (
           <>
             {hotCount > 0 && (
@@ -71,7 +75,7 @@ export function FactorSpikeBanner() {
           </>
         )}
       </button>
-      {open && <FactorSpikesModal initialDate={date} onClose={() => setOpen(false)} />}
+      {open && <FactorSpikesModal onClose={() => setOpen(false)} />}
     </>
   );
 }

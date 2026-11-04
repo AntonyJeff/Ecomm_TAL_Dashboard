@@ -753,25 +753,30 @@ interface SpikeAccount {
 }
 
 /**
- * The daily "who just spiked" comparison behind the dashboard's spike
- * banner: for the given day, finds every account whose Engagement Level
- * jumped UP relative to the most recent earlier day that has data (never
- * assumes "yesterday" specifically, since the sheet can have gaps) - split
- * into "newly Hot" (crossed into Hot from anything else) and "newly Warm"
- * (crossed into Warm from Cool/Ice/unscored). A account dropping a level, or
- * moving between two non-adjacent-in-rank-but-equal levels, is not a spike.
+ * The "who just spiked" comparison behind the dashboard's spike banner, now
+ * scoped to a WEEK (matching the same Week 1/2/3... boundaries the rest of
+ * the dashboard uses), not a single day: finds every account whose
+ * Engagement Level jumped UP at any point during the given week, relative to
+ * wherever it stood right before the week started (never assumes "the day
+ * before" specifically, since the sheet can have gaps) - split into "newly
+ * Hot" (crossed into Hot from anything else) and "newly Warm" (crossed into
+ * Warm from Cool/Ice/unscored). An account dropping a level, or moving
+ * between two non-adjacent-in-rank-but-equal levels, is not a spike.
  *
  * Deliberately NEVER goes live against Salesforce, unlike the Factor Score
- * column - a spike is a day-over-day BATCH comparison, so a mid-day live
+ * column - a spike is a batch day-over-day comparison, so a mid-day live
  * read would show a false, premature "no change yet" (or a partial change
  * that could still flip by end of day) and get mistaken for that day's real
- * outcome. Until tonight's run actually happens, "today" simply isn't a day
- * yet - so `date` with no explicit value, or a value not yet in the sheet,
- * always resolves to the MOST RECENT day that has actually been captured.
- * The moment tonight's sync lands, that automatically becomes the new
- * "latest day" on the very next request - no separate live step needed.
+ * outcome. For the CURRENT, still-running week, `date` resolves to whatever
+ * the most recently synced day WITHIN that week is - so the result updates
+ * on its own, day by day, as each night's sync lands, without any separate
+ * live step. A fully elapsed past week's result is permanent and never
+ * changes again, same as everywhere else in this dashboard.
  */
-async function computeFactorSpikes(requestedDate?: string): Promise<{
+async function computeFactorSpikes(
+  start: string,
+  end: string
+): Promise<{
   date: string | null;
   previousDate: string | null;
   availableDates: string[];
@@ -781,15 +786,22 @@ async function computeFactorSpikes(requestedDate?: string): Promise<{
   const [rows, accounts] = await Promise.all([getFactorsScoreRows(), getAccountsFromSheet()]);
   const nameById = new Map(accounts.map((a) => [a.accountId, a.accountName]));
 
+  const today = todayIsoIST();
+  const effectiveEnd = end < today ? end : today;
+
   const sheetDates = Array.from(new Set(rows.map((r) => r.runDate))).sort();
-  const date = requestedDate && sheetDates.includes(requestedDate) ? requestedDate : sheetDates.at(-1) ?? null;
+  const inRangeDates = sheetDates.filter((d) => d >= start && d <= effectiveEnd);
+  const date = inRangeDates.at(-1) ?? null; // most recent day actually synced within this week so far
 
   if (!date) {
-    // No history captured at all yet - nothing to compare, not an error.
+    // No day within this week has been captured yet - nothing to compare, not an error.
     return { date: null, previousDate: null, availableDates: [], newlyHot: [], newlyWarm: [] };
   }
 
-  const previousDate = sheetDates.filter((d) => d < date).at(-1) ?? null;
+  // The snapshot right before this week began - the "from" baseline every
+  // spike in this week is measured against, no matter which day within the
+  // week an account actually crossed over on.
+  const previousDate = sheetDates.filter((d) => d < start).at(-1) ?? null;
 
   const toByAccount: Record<string, { level: string; score: number | null; signals: string }> = {};
   for (const r of rows) {
@@ -831,19 +843,19 @@ async function computeFactorSpikes(requestedDate?: string): Promise<{
   newlyHot.sort((a, b) => (b.toScore ?? 0) - (a.toScore ?? 0));
   newlyWarm.sort((a, b) => (b.toScore ?? 0) - (a.toScore ?? 0));
 
-  return { date, previousDate, availableDates: sheetDates, newlyHot, newlyWarm };
+  return { date, previousDate, availableDates: inRangeDates, newlyHot, newlyWarm };
 }
 
-// GET /api/accounts/factor-spikes?date=YYYY-MM-DD - the daily spike banner's
-// data: every account that crossed into Hot or Warm since the last available
-// snapshot before `date`. Defaults to, and silently falls back to, the most
-// recently SYNCED day - never a live/in-progress "today" (see the comment on
-// computeFactorSpikes for why).
+// GET /api/accounts/factor-spikes?start=YYYY-MM-DD&end=YYYY-MM-DD - the spike
+// banner's data for one week (same Week 1/2/3... boundaries as the rest of
+// the dashboard): every account that crossed into Hot or Warm at any point
+// during that week, compared against wherever it stood right before the week
+// began. For the current, still-running week this naturally fills in more as
+// each night's sync lands (see the comment on computeFactorSpikes for why).
 accountsRouter.get("/factor-spikes", async (req, res) => {
   try {
-    const date = req.query.date !== undefined ? String(req.query.date) : undefined;
-    if (date !== undefined && !DATE_RE.test(date)) throw new Error("date must be YYYY-MM-DD");
-    res.json(await computeFactorSpikes(date));
+    const { start, end } = requireDateRange(req.query);
+    res.json(await computeFactorSpikes(start, end));
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

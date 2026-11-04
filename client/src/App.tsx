@@ -142,6 +142,34 @@ function sortOptionValue(
   return 0;
 }
 
+/**
+ * Click-to-sort-by-column identity - covers every touchpoint column shown
+ * across all five tabs (unlike SORT_OPTIONS above, which deliberately omits
+ * low-value columns like "opened"/"sent"/"read" since that's a curated
+ * "show me who's engaged" quick filter, not a sort-everything mechanism).
+ */
+type ColumnSortKey =
+  | { kind: "websiteSessions" }
+  | { kind: "touchpoint"; tKey: TouchpointKey }
+  | { kind: "linkedin"; liKey: keyof LinkedinMetrics };
+
+function columnSortKeyId(col: ColumnSortKey): string {
+  if (col.kind === "websiteSessions") return "websiteSessions";
+  if (col.kind === "touchpoint") return `tp_${col.tKey}`;
+  return `li_${col.liKey}`;
+}
+
+function columnSortValue(
+  col: ColumnSortKey,
+  accountId: string,
+  ranks: Record<string, RankEntry>,
+  liMetrics: Record<string, LinkedinMetrics> | undefined
+): number {
+  if (col.kind === "websiteSessions") return ranks[accountId]?.websiteSessions ?? 0;
+  if (col.kind === "touchpoint") return ranks[accountId]?.[col.tKey] ?? 0;
+  return liMetrics?.[accountId]?.[col.liKey] ?? 0;
+}
+
 function parseMrr(v: string): number {
   const n = Number(String(v).replace(/[^0-9.-]/g, ""));
   return Number.isFinite(n) ? n : 0;
@@ -165,6 +193,20 @@ function factorClass(level: string | undefined): string {
   if (level === "Ice") return "factor-ice";
   return "factor-unscored";
 }
+
+/**
+ * Official score thresholds Factors.ai's own "Engagement Category" grading
+ * screen is configured with (Grade by: Score) - shown next to each level in
+ * the Factor Score filter so it's clear what the label is SUPPOSED to mean,
+ * even though real scored accounts don't always land cleanly inside these
+ * bands (confirmed from live data - see the earlier staleness investigation).
+ */
+const FACTOR_LEVEL_SCORE_RANGE: Record<string, string> = {
+  Hot: "50+ pts",
+  Warm: "25-50 pts",
+  Cool: "1-25 pts",
+  Ice: "0-1 pts",
+};
 
 /** The month this dashboard went live - the month dropdown lists every month from here through the current real month, growing on its own as time passes. */
 const DASHBOARD_START_MONTH = "2026-10";
@@ -282,6 +324,14 @@ export default function App() {
   const [selectedFactorLevels, setSelectedFactorLevels] = useState<Set<string>>(new Set());
   const [selectedPriorities, setSelectedPriorities] = useState<Set<string>>(new Set());
   const [sortMetrics, setSortMetrics] = useState<Set<string>>(() => new Set(persisted.sortMetrics ?? []));
+
+  // Click-to-sort on a touchpoint column header (website sessions, any
+  // Marketing/LinkedIn/MDR/SDR/Sales column): first click sorts that column
+  // ascending, clicking the SAME column again flips to descending (and back),
+  // clicking a DIFFERENT column starts that one fresh at ascending. Takes
+  // priority over the Engagement Score / "sort by metric" default below,
+  // since clicking a column header is a more specific, explicit choice.
+  const [columnSort, setColumnSort] = useState<{ col: ColumnSortKey; direction: "asc" | "desc" } | null>(null);
 
   // UI trial (redesign-tabbed-kpi branch) state - see the GROUP_TABS comment above.
   const [activeTab, setActiveTab] = useState<GroupTab>(
@@ -478,6 +528,19 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [factorsRangeKey]);
 
+  function toggleColumnSort(col: ColumnSortKey) {
+    setColumnSort((prev) =>
+      prev && columnSortKeyId(prev.col) === columnSortKeyId(col)
+        ? { col, direction: prev.direction === "asc" ? "desc" : "asc" }
+        : { col, direction: "asc" }
+    );
+  }
+
+  function sortArrow(col: ColumnSortKey): string | null {
+    if (!columnSort || columnSortKeyId(columnSort.col) !== columnSortKeyId(col)) return null;
+    return columnSort.direction === "asc" ? "▲" : "▼";
+  }
+
   // Lets someone pick several "top accounts by" metrics at once (e.g. most
   // email opens AND most website sessions) instead of only one at a time.
   // Each selected metric is percentile-ranked (same technique as the main
@@ -539,7 +602,15 @@ export default function App() {
           ((ranks[a.accountId]?.mediumIntentSessions ?? 0) > 0 && (ranks[a.accountId]?.highIntentSessions ?? 0) === 0)
       );
 
-    if (combinedMetricScores) {
+    if (columnSort) {
+      rows.sort((a, b) => {
+        const av = columnSortValue(columnSort.col, a.accountId, ranks, currentLiSnapshot?.metrics);
+        const bv = columnSortValue(columnSort.col, b.accountId, ranks, currentLiSnapshot?.metrics);
+        const diff = columnSort.direction === "asc" ? av - bv : bv - av;
+        if (diff !== 0) return diff;
+        return parseMrr(b.potentialMrr) - parseMrr(a.potentialMrr);
+      });
+    } else if (combinedMetricScores) {
       rows.sort((a, b) => {
         const diff = (combinedMetricScores[b.accountId] ?? 0) - (combinedMetricScores[a.accountId] ?? 0);
         if (diff !== 0) return diff;
@@ -555,7 +626,7 @@ export default function App() {
       rows.sort((a, b) => parseMrr(b.potentialMrr) - parseMrr(a.potentialMrr));
     }
     return rows;
-  }, [accounts, search, selectedRegions, selectedMrr, selectedPriorities, selectedFactorLevels, factorsReady, factorsScores, sortMetrics, ranks, ranksReady, currentLiSnapshot, combinedMetricScores, engagementScores]);
+  }, [accounts, search, selectedRegions, selectedMrr, selectedPriorities, selectedFactorLevels, factorsReady, factorsScores, sortMetrics, ranks, ranksReady, currentLiSnapshot, combinedMetricScores, engagementScores, columnSort]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const visible = filtered.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
@@ -819,6 +890,7 @@ export default function App() {
                 opt
               ])
             }
+            subLabelFor={(opt) => FACTOR_LEVEL_SCORE_RANGE[opt]}
           />
           <ColumnFilter
             label="Account Priority"
@@ -936,10 +1008,25 @@ export default function App() {
             {/* Only the active tab's columns render - a single group header above spans whichever set is showing. */}
             {activeTab === "marketing" && (
               <>
-                <th className="group-col-marketing">Website sessions</th>
+                <th
+                  className="group-col-marketing sortable-col"
+                  onClick={() => toggleColumnSort({ kind: "websiteSessions" })}
+                >
+                  Website sessions
+                  {sortArrow({ kind: "websiteSessions" }) && (
+                    <span className="col-sort-arrow">{sortArrow({ kind: "websiteSessions" })}</span>
+                  )}
+                </th>
                 {MARKETING_TOUCHPOINT_KEYS.map((k) => (
-                  <th key={k} className="group-col-marketing">
+                  <th
+                    key={k}
+                    className="group-col-marketing sortable-col"
+                    onClick={() => toggleColumnSort({ kind: "touchpoint", tKey: k })}
+                  >
                     {TOUCHPOINTS[k]}
+                    {sortArrow({ kind: "touchpoint", tKey: k }) && (
+                      <span className="col-sort-arrow">{sortArrow({ kind: "touchpoint", tKey: k })}</span>
+                    )}
                   </th>
                 ))}
               </>
@@ -948,32 +1035,57 @@ export default function App() {
               LINKEDIN_COLUMNS.map((c) => (
                 <th
                   key={c.key}
-                  className="linkedin-col-header"
+                  className="linkedin-col-header sortable-col"
                   title={
                     currentLiSnapshot
                       ? `Last 7 days: ${currentLiSnapshot.windowStart} to ${currentLiSnapshot.asOfDate} (pushed ${currentLiSnapshot.receivedDate})`
                       : "No LinkedIn data available yet as of this week"
                   }
+                  onClick={() => toggleColumnSort({ kind: "linkedin", liKey: c.key })}
                 >
                   {c.label}
+                  {sortArrow({ kind: "linkedin", liKey: c.key }) && (
+                    <span className="col-sort-arrow">{sortArrow({ kind: "linkedin", liKey: c.key })}</span>
+                  )}
                 </th>
               ))}
             {activeTab === "mdr" &&
               MDR_TOUCHPOINT_KEYS.map((k) => (
-                <th key={k} className="group-col-mdr">
+                <th
+                  key={k}
+                  className="group-col-mdr sortable-col"
+                  onClick={() => toggleColumnSort({ kind: "touchpoint", tKey: k })}
+                >
                   {TOUCHPOINTS[k]}
+                  {sortArrow({ kind: "touchpoint", tKey: k }) && (
+                    <span className="col-sort-arrow">{sortArrow({ kind: "touchpoint", tKey: k })}</span>
+                  )}
                 </th>
               ))}
             {activeTab === "sdr" &&
               SDR_TOUCHPOINT_KEYS.map((k) => (
-                <th key={k} className="group-col-sdr">
+                <th
+                  key={k}
+                  className="group-col-sdr sortable-col"
+                  onClick={() => toggleColumnSort({ kind: "touchpoint", tKey: k })}
+                >
                   {TOUCHPOINTS[k]}
+                  {sortArrow({ kind: "touchpoint", tKey: k }) && (
+                    <span className="col-sort-arrow">{sortArrow({ kind: "touchpoint", tKey: k })}</span>
+                  )}
                 </th>
               ))}
             {activeTab === "sales" &&
               SALES_TOUCHPOINT_KEYS.map((k) => (
-                <th key={k} className="group-col-sales">
+                <th
+                  key={k}
+                  className="group-col-sales sortable-col"
+                  onClick={() => toggleColumnSort({ kind: "touchpoint", tKey: k })}
+                >
                   {TOUCHPOINTS[k]}
+                  {sortArrow({ kind: "touchpoint", tKey: k }) && (
+                    <span className="col-sort-arrow">{sortArrow({ kind: "touchpoint", tKey: k })}</span>
+                  )}
                 </th>
               ))}
           </tr>

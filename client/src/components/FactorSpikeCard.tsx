@@ -1,16 +1,17 @@
 import { useEffect, useState } from "react";
 import { fetchFactorSpikes } from "../api";
 import { FactorSpikesModal } from "./FactorSpikesModal";
+import { monthWeeks, currentWeekNumber } from "../weeks";
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
 /**
- * Compact daily spike card (see FactorSpikeBanner on main for the full
- * reasoning on why this never shows a live/mid-day "today" - same data,
- * same rule, just restyled per the reference mockup: a number, a one-line
- * breakdown, and a text link instead of a button).
+ * Compact weekly spike card (see FactorSpikeBanner for the full reasoning on
+ * why this is scoped to the current week and never shows a live/mid-day
+ * "today" - same data, same rule, just restyled per the reference mockup: a
+ * number, a one-line breakdown, and a text link instead of a button).
  */
 export function FactorSpikeCard() {
   const [hotCount, setHotCount] = useState<number | null>(null);
@@ -21,7 +22,9 @@ export function FactorSpikeCard() {
 
   useEffect(() => {
     let cancelled = false;
-    fetchFactorSpikes()
+    const weeks = monthWeeks(new Date());
+    const week = weeks.find((w) => w.week === currentWeekNumber(weeks, todayIso())) ?? weeks[weeks.length - 1];
+    fetchFactorSpikes({ start: week.start, end: week.end })
       .then((r) => {
         if (cancelled) return;
         setHotCount(r.newlyHot.length);
@@ -41,7 +44,7 @@ export function FactorSpikeCard() {
   return (
     <div className="bento-card">
       <div className="bento-card-top">
-        <span className="bento-card-label">Daily spikes{dateSuffix ? ` · ${dateSuffix}` : ""}</span>
+        <span className="bento-card-label">Weekly spikes{dateSuffix ? ` · ${dateSuffix}` : ""}</span>
       </div>
 
       {error && <div className="spike-card-value">—</div>}
@@ -56,13 +59,13 @@ export function FactorSpikeCard() {
                   .filter(Boolean)
                   .join(" · ")}
           </div>
-          <button className="spike-card-link" onClick={() => setOpen(true)} disabled={!date}>
+          <button className="spike-card-link" onClick={() => setOpen(true)}>
             View spikes and reasons →
           </button>
         </>
       )}
 
-      {open && date && <FactorSpikesModal initialDate={date} onClose={() => setOpen(false)} />}
+      {open && <FactorSpikesModal onClose={() => setOpen(false)} />}
     </div>
   );
 }
