@@ -774,6 +774,11 @@ export default function App() {
             options={factorLevelOptions}
             selected={selectedFactorLevels}
             onChange={setSelectedFactorLevels}
+            dotClassFor={(opt) =>
+              ({ Hot: "factor-bar-hot", Warm: "factor-bar-warm", Cool: "factor-bar-cool", Ice: "factor-bar-ice" }[
+                opt
+              ])
+            }
           />
           <ColumnFilter
             label="Account Priority"
