@@ -53,12 +53,21 @@ export function FactorSpikesModal({ initialDate, onClose }: { initialDate: strin
   const [selectedDate, setSelectedDate] = useState(initialDate);
   const [result, setResult] = useState<FactorSpikesResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Kept separate from `result` (which is nulled out on every date change
+  // while the new day loads) - otherwise the date picker's own option list
+  // would collapse down to just one entry on every switch, making it look
+  // broken/stuck while a slow request is in flight.
+  const [knownDates, setKnownDates] = useState<string[]>([initialDate]);
 
   useEffect(() => {
     let cancelled = false;
     setResult(null);
     fetchFactorSpikes(selectedDate)
-      .then((r) => !cancelled && setResult(r))
+      .then((r) => {
+        if (cancelled) return;
+        setResult(r);
+        if (r.availableDates.length > 0) setKnownDates(r.availableDates);
+      })
       .catch((e) => !cancelled && setError(String(e.message || e)));
     return () => {
       cancelled = true;
@@ -70,9 +79,9 @@ export function FactorSpikesModal({ initialDate, onClose }: { initialDate: strin
   // history - a fresh picker each month as new days accumulate.
   const monthDates = useMemo(() => {
     const month = selectedDate.slice(0, 7);
-    const dates = (result?.availableDates ?? [initialDate]).filter((d) => d.startsWith(month));
+    const dates = knownDates.filter((d) => d.startsWith(month));
     return Array.from(new Set([...dates, selectedDate])).sort();
-  }, [result, selectedDate, initialDate]);
+  }, [knownDates, selectedDate]);
 
   const total = result ? result.newlyHot.length + result.newlyWarm.length : null;
 
