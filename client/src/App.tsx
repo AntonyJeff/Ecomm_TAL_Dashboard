@@ -5,6 +5,7 @@ import {
   fetchLinkedinSnapshots,
   fetchFactorsScores,
   fetchRank,
+  mergeRankMaps,
   TOUCHPOINTS,
   TOUCHPOINT_SOURCE,
   type DateRange,
@@ -15,7 +16,8 @@ import {
   type TouchpointKey,
 } from "./api";
 import type { SheetAccount } from "./types";
-import { monthWeeks, currentWeekNumber, monthValueOf, monthBounds, monthOptionsRange } from "./weeks";
+import { monthWeeks, currentWeekNumber, monthValueOf, monthOptionsRange } from "./weeks";
+import { WeekMultiSelect } from "./components/WeekMultiSelect";
 import { ContactsModal } from "./components/ContactsModal";
 import { TouchpointEventsModal } from "./components/TouchpointEventsModal";
 import { WebsiteSessionsModal } from "./components/WebsiteSessionsModal";
@@ -167,9 +169,6 @@ function factorClass(level: string | undefined): string {
 /** The month this dashboard went live - the month dropdown lists every month from here through the current real month, growing on its own as time passes. */
 const DASHBOARD_START_MONTH = "2026-10";
 
-/** A specific week, or "all" for the whole month consolidated together. */
-type WeekSelection = number | "all";
-
 type ModalState =
   | { kind: "contacts"; accountId: string; accountName: string }
   | { kind: "touchpoint"; touchpoint: TouchpointKey; accountId: string; accountName: string }
@@ -196,20 +195,68 @@ export default function App() {
     return monthWeeks(new Date(y, m - 1, 1));
   }, [selectedMonth]);
 
-  const [selectedWeekNum, setSelectedWeekNum] = useState<WeekSelection>(
-    () => persisted.weekNum ?? currentWeekNumber(weeks, todayIso())
+  // One or more weeks can be selected at once (touchpoint counts sum across
+  // all of them - see mergeRankMaps). Defaults to just the current week.
+  const [selectedWeekNums, setSelectedWeekNums] = useState<Set<number>>(
+    () => new Set(persisted.weekNums && persisted.weekNums.length > 0 ? persisted.weekNums : [currentWeekNumber(weeks, todayIso())])
   );
 
   function selectMonth(month: string) {
     setSelectedMonth(month);
-    setSelectedWeekNum("all"); // land on the month overview; drill into a week from there
   }
 
-  const dateRange: DateRange = useMemo(() => {
-    if (selectedWeekNum === "all") return monthBounds(selectedMonth);
-    const w = weeks.find((x) => x.week === selectedWeekNum) || weeks[0];
-    return { start: w.start, end: w.end };
-  }, [weeks, selectedWeekNum, selectedMonth]);
+  // Switching months always lands back on the full month overview, not
+  // whatever week number happened to be selected before (a "Week 2" from last
+  // month means nothing in the new one). Skipped on first mount since the
+  // initial state above already restored (or defaulted) correctly.
+  const monthChangeIsFirstRun = useRef(true);
+  useEffect(() => {
+    if (monthChangeIsFirstRun.current) {
+      monthChangeIsFirstRun.current = false;
+      return;
+    }
+    setSelectedWeekNums(new Set(weeks.map((w) => w.week)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMonth]);
+
+  // Every selected week, grouped into contiguous date ranges (a selection
+  // like Week 2 + Week 3 becomes one combined range; Week 1 + Week 3 becomes
+  // two separate ranges) - lets touchpoint data be fetched correctly without
+  // ever silently including an unselected week's days in between.
+  const selectedRanges: DateRange[] = useMemo(() => {
+    const picked = weeks.filter((w) => selectedWeekNums.has(w.week)).sort((a, b) => a.week - b.week);
+    if (picked.length === 0) return [{ start: weeks[0]?.start ?? todayIso(), end: weeks[0]?.end ?? todayIso() }];
+    const ranges: DateRange[] = [];
+    let runStart = picked[0].start;
+    let runEnd = picked[0].end;
+    for (let i = 1; i < picked.length; i++) {
+      if (picked[i].week === picked[i - 1].week + 1) {
+        runEnd = picked[i].end;
+      } else {
+        ranges.push({ start: runStart, end: runEnd });
+        runStart = picked[i].start;
+        runEnd = picked[i].end;
+      }
+    }
+    ranges.push({ start: runStart, end: runEnd });
+    return ranges;
+  }, [weeks, selectedWeekNums]);
+
+  // Outer bounds of the full selection - used for display, "does this
+  // include today" checks, and per-account drill-down modals (which show a
+  // combined range rather than re-querying per sub-range, since a day or two
+  // of overlap in a gap between non-contiguous weeks doesn't matter for a
+  // human-readable event list the way it would for a summed count).
+  const dateRange: DateRange = useMemo(
+    () => ({ start: selectedRanges[0].start, end: selectedRanges[selectedRanges.length - 1].end }),
+    [selectedRanges]
+  );
+
+  // Factor Score always reflects the latest selected week, never a sum -
+  // Hot/Warm/Cool/Ice isn't something that can be combined across weeks.
+  const latestRange: DateRange = selectedRanges[selectedRanges.length - 1];
+
+  const isAllWeeksSelected = weeks.length > 0 && weeks.every((w) => selectedWeekNums.has(w.week));
 
   const [accounts, setAccounts] = useState<SheetAccount[]>([]);
   const [instanceUrl, setInstanceUrl] = useState<string>("");
@@ -354,9 +401,10 @@ export default function App() {
     setSelectedFactorLevels(new Set(restored.length > 0 ? restored : factorLevelOptions));
   }, [factorLevelOptions, persisted]);
 
-  const rangeKey = `${dateRange.start}|${dateRange.end}`;
-  const ranksReady = rangeKey === rankForRange;
-  const factorsReady = rangeKey === factorsForRange;
+  const rankRangeKey = selectedRanges.map((r) => `${r.start}|${r.end}`).join(",");
+  const factorsRangeKey = `${latestRange.start}|${latestRange.end}`;
+  const ranksReady = rankRangeKey === rankForRange;
+  const factorsReady = factorsRangeKey === factorsForRange;
   const weekIncludesToday = dateRange.end >= todayIso();
 
   // The Engagement Score every account gets for the selected week - a plain
@@ -388,16 +436,17 @@ export default function App() {
   }, [accounts, engagementScores]);
 
   // Ranking is a full scan (every touchpoint + website sessions for every
-  // account), so it's fetched once per selected week and reused for every
-  // page/search/filter change.
+  // account), so it's fetched once per selected combination of weeks and
+  // reused for every page/search/filter change. One fetch per contiguous
+  // range, summed together - see mergeRankMaps.
   useEffect(() => {
     let cancelled = false;
     setRankLoading(true);
-    fetchRank(dateRange)
-      .then((r) => {
+    Promise.all(selectedRanges.map((r) => fetchRank(r)))
+      .then((results) => {
         if (cancelled) return;
-        setRanks(r.ranks);
-        setRankForRange(rangeKey);
+        setRanks(mergeRankMaps(results.map((r) => r.ranks)));
+        setRankForRange(rankRangeKey);
       })
       .catch((e) => !cancelled && setLoadError(String(e.message || e)))
       .finally(() => !cancelled && setRankLoading(false));
@@ -405,28 +454,29 @@ export default function App() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rangeKey]);
+  }, [rankRangeKey]);
 
   // Factor Score (Factors.ai Engagement Level + raw score) - independent
   // fetch from the Salesforce-Task rank scan above, since it comes from a
   // different source (the daily Factors_Score sheet, or live Salesforce for
-  // today) and resolves per-period rather than counting anything.
+  // today) and resolves per-period rather than counting anything. Always
+  // uses the latest selected week, never a combined range - see latestRange.
   useEffect(() => {
     let cancelled = false;
-    fetchFactorsScores(dateRange)
+    fetchFactorsScores(latestRange)
       .then((r) => {
         if (cancelled) return;
         setFactorsScores(r.byAccount);
         setFactorsAsOfDate(r.asOfDate);
         setFactorsIsLive(r.isLive);
-        setFactorsForRange(rangeKey);
+        setFactorsForRange(factorsRangeKey);
       })
       .catch((e) => !cancelled && setLoadError(String(e.message || e)));
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rangeKey]);
+  }, [factorsRangeKey]);
 
   // Lets someone pick several "top accounts by" metrics at once (e.g. most
   // email opens AND most website sessions) instead of only one at a time.
@@ -593,7 +643,7 @@ export default function App() {
     if (regionOptions.length === 0) return;
     savePersistedState({
       month: selectedMonth,
-      weekNum: selectedWeekNum,
+      weekNums: Array.from(selectedWeekNums),
       search,
       regions: Array.from(selectedRegions),
       mrr: Array.from(selectedMrr),
@@ -605,7 +655,7 @@ export default function App() {
     });
   }, [
     selectedMonth,
-    selectedWeekNum,
+    selectedWeekNums,
     search,
     selectedRegions,
     selectedMrr,
@@ -617,7 +667,7 @@ export default function App() {
     activeTab,
   ]);
 
-  const periodLabel = selectedWeekNum === "all" ? "This month" : "This week";
+  const periodLabel = isAllWeeksSelected ? "This month" : selectedWeekNums.size > 1 ? "Selected weeks" : "This week";
   const groupHeaderLabel =
     activeTab === "marketing"
       ? `Marketing Engagement · ${periodLabel}`
@@ -667,21 +717,11 @@ export default function App() {
             options={monthOptions.map((m) => ({ value: m.value, label: m.label }))}
             title="Which month's data to look at - the week selector next to it narrows within this month, or pick 'All weeks' for the full month total"
           />
-          <ModernSelect
-            value={selectedWeekNum}
-            onChange={(v) => setSelectedWeekNum(v)}
-            options={[
-              {
-                value: "all" as const,
-                label: "All weeks",
-                sublabel: `${monthOptions.find((m) => m.value === selectedMonth)?.label} total`,
-              },
-              ...weeks.map((w) => ({
-                value: w.week,
-                label: `Week ${w.week}`,
-                sublabel: `${w.start} to ${w.end}`,
-              })),
-            ]}
+          <WeekMultiSelect
+            weeks={weeks}
+            monthLabel={monthOptions.find((m) => m.value === selectedMonth)?.label ?? selectedMonth}
+            selected={selectedWeekNums}
+            onChange={setSelectedWeekNums}
           />
         </div>
       </header>

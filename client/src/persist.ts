@@ -6,7 +6,7 @@
  */
 export interface PersistedDashboardState {
   month?: string; // "YYYY-MM"
-  weekNum?: number | "all"; // "all" = whole-month consolidated view
+  weekNums?: number[]; // one or more selected weeks; every week number present = "all weeks"
   search?: string;
   regions?: string[];
   mrr?: string[];

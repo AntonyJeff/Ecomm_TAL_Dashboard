@@ -79,14 +79,6 @@ export function monthValueOf(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
-/** First and last calendar day of a "YYYY-MM" month - the date range used for the "whole month" consolidated view. */
-export function monthBounds(monthValue: string): { start: string; end: string } {
-  const [y, m] = monthValue.split("-").map(Number);
-  const first = new Date(y, m - 1, 1);
-  const last = new Date(y, m, 0);
-  return { start: iso(first), end: iso(last) };
-}
-
 export interface MonthOption {
   value: string; // "YYYY-MM"
   label: string; // "October 2026"
