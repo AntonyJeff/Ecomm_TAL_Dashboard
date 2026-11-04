@@ -1474,7 +1474,11 @@ thead .sticky-col {
   position: absolute;
   top: 100%;
   left: 0;
-  z-index: 30;
+  /* Higher than .search-filter-bar's sticky z-index (40) - otherwise, once
+     the page is scrolled enough for that bar to dock at the top, it renders
+     on top of this menu and visually clips it (the Week picker lives in the
+     header, above/outside that sticky bar). */
+  z-index: 45;
   margin-top: 8px;
   min-width: max-content;
   background: var(--surface);
