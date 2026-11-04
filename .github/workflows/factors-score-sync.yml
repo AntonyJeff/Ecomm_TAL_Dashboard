@@ -1,0 +1,31 @@
+name: Daily Factors.ai score sync
+
+on:
+  schedule:
+    # 23:55 IST = 18:25 UTC, every day
+    - cron: "25 18 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r automation/requirements.txt
+
+      - name: Run Factors.ai sync
+        env:
+          SF_LOGIN_URL: ${{ secrets.SF_LOGIN_URL }}
+          SF_CONSUMER_KEY: ${{ secrets.SF_CONSUMER_KEY }}
+          SF_CONSUMER_SECRET: ${{ secrets.SF_CONSUMER_SECRET }}
+          GOOGLE_CLIENT_EMAIL: ${{ secrets.GOOGLE_CLIENT_EMAIL }}
+          GOOGLE_PRIVATE_KEY: ${{ secrets.GOOGLE_PRIVATE_KEY }}
+          GOOGLE_SHEET_TAB: ${{ secrets.GOOGLE_SHEET_TAB }}
+          ENGAGEMENT_SHEET_ID: ${{ secrets.ENGAGEMENT_SHEET_ID }}
+        run: python automation/factors_score_sync.py
