@@ -105,6 +105,28 @@ export type RankEntry = Record<TouchpointKey, number> & {
 };
 
 /**
+ * Combines per-week rank results into one combined total, for multi-week
+ * selection - every field on RankEntry is a plain count, so "touchpoints
+ * across Week 2 + Week 4" is just the sum of each week's own numbers.
+ */
+export function mergeRankMaps(maps: Record<string, RankEntry>[]): Record<string, RankEntry> {
+  const out: Record<string, RankEntry> = {};
+  for (const map of maps) {
+    for (const [accountId, entry] of Object.entries(map)) {
+      const existing = out[accountId];
+      if (!existing) {
+        out[accountId] = { ...entry };
+        continue;
+      }
+      for (const key of Object.keys(entry) as (keyof RankEntry)[]) {
+        (existing[key] as number) = (existing[key] as number) + (entry[key] as number);
+      }
+    }
+  }
+  return out;
+}
+
+/**
  * Every touchpoint count (+ website sessions) for EVERY account in the given
  * date range - used to sort the table. `cached: "stale"` means you got the
  * last-known numbers instantly while the server refreshes them in the
