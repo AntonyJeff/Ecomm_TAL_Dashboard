@@ -11,11 +11,14 @@ export function ColumnFilter({
   options,
   selected,
   onChange,
+  dotClassFor,
 }: {
   label: string;
   options: string[];
   selected: Set<string>;
   onChange: (next: Set<string>) => void;
+  /** Optional per-option color dot (e.g. Hot/Warm/Cool/Ice), same colors used in the Factor Score Split card. */
+  dotClassFor?: (opt: string) => string | undefined;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -77,17 +80,21 @@ export function ColumnFilter({
             <button onClick={() => onChange(new Set())}>None</button>
           </div>
           <div className="col-filter-list">
-            {options.map((opt) => (
-              <label key={opt} className="col-filter-option">
-                <input
-                  type="checkbox"
-                  className="col-filter-checkbox"
-                  checked={selected.has(opt)}
-                  onChange={() => toggle(opt)}
-                />
-                {opt}
-              </label>
-            ))}
+            {options.map((opt) => {
+              const dotClass = dotClassFor?.(opt);
+              return (
+                <label key={opt} className="col-filter-option">
+                  <input
+                    type="checkbox"
+                    className="col-filter-checkbox"
+                    checked={selected.has(opt)}
+                    onChange={() => toggle(opt)}
+                  />
+                  {dotClass && <span className={`col-filter-dot ${dotClass}`} />}
+                  {opt}
+                </label>
+              );
+            })}
           </div>
         </div>
       )}

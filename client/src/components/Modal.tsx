@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 export function Modal({
   eyebrow,
@@ -15,7 +16,12 @@ export function Modal({
   onClose: () => void;
   children: ReactNode;
 }) {
-  return (
+  // Rendered into document.body rather than in place - a `position: fixed`
+  // backdrop gets trapped inside the bounds of any ancestor with a `transform`
+  // (e.g. a card's hover-lift effect), which shrinks the modal down to that
+  // card's box instead of covering the screen. A portal sidesteps that
+  // entirely, regardless of what this is opened from.
+  return createPortal(
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
@@ -34,6 +40,7 @@ export function Modal({
         </div>
         <div className="modal-body">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
