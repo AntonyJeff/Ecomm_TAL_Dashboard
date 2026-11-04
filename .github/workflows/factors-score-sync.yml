@@ -1,12 +1,9 @@
 name: Daily Factors.ai score sync
 
 on:
-  # Scheduled 23:55 IST run temporarily disabled - today's sync was run
-  # manually instead, so the nightly cron would otherwise append a second,
-  # duplicate row for the same day. Re-enable by uncommenting the schedule
-  # block below.
-  # schedule:
-  #   - cron: "25 18 * * *"
+  schedule:
+    # 23:55 IST = 18:25 UTC, every day
+    - cron: "25 18 * * *"
   workflow_dispatch: {}
 
 jobs:
