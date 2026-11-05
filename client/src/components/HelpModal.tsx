@@ -70,11 +70,22 @@ export function HelpModal({ onClose }: { onClose: () => void }) {
           these raw counts for the selected week - {summedMetricLabels}.
         </p>
         <p>
-          <strong>LinkedIn impressions are the one exception</strong>, counted differently on
-          purpose - a single impression is far weaker evidence of interest than a click or a reply,
-          and summing it directly would let a number in the hundreds or thousands drown out every
-          other metric. Instead, every full 500 combined LinkedIn impressions (organic + paid) adds
-          1 point to the score: 500 impressions = 1 point, 1,000 = 2, 1,500 = 3, and so on.
+          <strong>LinkedIn is the one exception</strong>, scored with its own weighted formulas
+          instead of being added in as raw counts - a single impression or like is far weaker
+          evidence of interest than a click or a reply, and summing it directly would let a number
+          in the hundreds or thousands drown out every other metric.
+        </p>
+        <p>
+          <strong>LinkedIn paid score</strong> = (paid impressions / 500) + (paid clicks × 3). A
+          paid click is a deliberate, costly action - the account left the ad to visit the site -
+          so it's weighted heavily; impressions are a cheap reach signal worth 1 point per 500.
+        </p>
+        <p>
+          <strong>LinkedIn organic score</strong> = (organic impressions / 500) + (√organic
+          engagement × 3). Organic engagement (likes/comments/shares combined) is a much weaker,
+          higher-volume signal than a paid click, so a square root is used instead of a straight
+          multiply - going from 10 to 1,000 engagements no longer multiplies the score by 100x,
+          since raw engagement volume isn't linearly proportional to buying intent.
         </p>
         <p>
           The number shown is this exact sum - uncapped, so there's no fixed "good" number to

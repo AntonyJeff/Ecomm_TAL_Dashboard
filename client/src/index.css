@@ -1394,6 +1394,26 @@ thead .sticky-col {
   font-size: 14px;
 }
 
+.spike-search-row {
+  margin-bottom: 14px;
+}
+
+.spike-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 14px;
+}
+
+.spike-search-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
 .spike-signals {
   margin-top: 6px;
 }

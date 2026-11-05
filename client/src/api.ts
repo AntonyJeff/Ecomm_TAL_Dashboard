@@ -257,6 +257,8 @@ export interface SpikeAccount {
   toLevel: string;
   toScore: number | null;
   signals: TopSignal[];
+  /** First day within the requested week the account's level reached its new tier - newest first when sorted. */
+  crossedDate: string | null;
 }
 
 export interface FactorSpikesResult {

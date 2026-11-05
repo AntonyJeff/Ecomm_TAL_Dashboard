@@ -750,6 +750,8 @@ interface SpikeAccount {
   toLevel: string;
   toScore: number | null;
   signals: TopSignal[];
+  /** First day within the requested range the account's level reached `toLevel`'s rank - used to float the newest crossings to the top. */
+  crossedDate: string | null;
 }
 
 /**
@@ -817,6 +819,24 @@ async function computeFactorSpikes(
     }
   }
 
+  // Per-day level, per account, for every day in this week synced so far -
+  // used to find the exact day an account's level first reached its new
+  // rank, so the newest crossings can float to the top instead of being
+  // buried under whichever account happens to score higher.
+  const levelByDateThenAccount: Record<string, Record<string, string>> = {};
+  for (const d of inRangeDates) levelByDateThenAccount[d] = {};
+  for (const r of rows) {
+    if (levelByDateThenAccount[r.runDate]) levelByDateThenAccount[r.runDate][r.accountId] = r.engagementLevel;
+  }
+
+  function crossedDateFor(accountId: string, toRank: number): string | null {
+    for (const d of inRangeDates) {
+      const level = levelByDateThenAccount[d][accountId];
+      if (level !== undefined && (LEVEL_RANK[level] ?? 0) >= toRank) return d;
+    }
+    return date;
+  }
+
   const newlyHot: SpikeAccount[] = [];
   const newlyWarm: SpikeAccount[] = [];
 
@@ -834,14 +854,22 @@ async function computeFactorSpikes(
       toLevel: to.level,
       toScore: to.score,
       signals: parseTopEngagementSignals(to.signals),
+      crossedDate: crossedDateFor(accountId, toRank),
     };
 
     if (to.level === "Hot") newlyHot.push(entry);
     else if (to.level === "Warm") newlyWarm.push(entry);
   }
 
-  newlyHot.sort((a, b) => (b.toScore ?? 0) - (a.toScore ?? 0));
-  newlyWarm.sort((a, b) => (b.toScore ?? 0) - (a.toScore ?? 0));
+  // Newest crossing first (so freshly-synced spikes surface at the top),
+  // then by score as a tiebreaker within the same day.
+  const byRecencyThenScore = (a: SpikeAccount, b: SpikeAccount) => {
+    const dateCompare = (b.crossedDate ?? "").localeCompare(a.crossedDate ?? "");
+    if (dateCompare !== 0) return dateCompare;
+    return (b.toScore ?? 0) - (a.toScore ?? 0);
+  };
+  newlyHot.sort(byRecencyThenScore);
+  newlyWarm.sort(byRecencyThenScore);
 
   return { date, previousDate, availableDates: inRangeDates, newlyHot, newlyWarm };
 }

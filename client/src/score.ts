@@ -38,25 +38,38 @@ export const SCORE_METRICS: ScoreMetric[] = [
   { key: "waRead", label: "WhatsApp read", getValue: (id, r) => r[id]?.waRead ?? 0 },
   { key: "waClicked", label: "WhatsApp clicked", getValue: (id, r) => r[id]?.waClicked ?? 0 },
   { key: "waReplied", label: "WhatsApp replied", getValue: (id, r) => r[id]?.waReplied ?? 0 },
-  {
-    key: "liOrganicEngagements",
-    label: "LinkedIn organic engagements",
-    getValue: (id, _r, li) => li?.[id]?.organicEngagements ?? 0,
-  },
-  {
-    key: "liPaidEngagements",
-    label: "LinkedIn paid engagements",
-    getValue: (id, _r, li) => li?.[id]?.paidEngagements ?? 0,
-  },
-  {
-    key: "liPaidClicks",
-    label: "LinkedIn paid clicks",
-    getValue: (id, _r, li) => li?.[id]?.paidClicks ?? 0,
-  },
 ];
 
-/** Every 500 combined LinkedIn impressions (organic + paid) = 1 point. */
-const IMPRESSIONS_PER_POINT = 500;
+/**
+ * LinkedIn paid score: (paid impressions / 500) + (paid clicks * 3).
+ * A paid click is a deliberate, costly action (the account left the ad to
+ * visit the site) so it's weighted heavily; impressions are a cheap reach
+ * signal, weighted at 1 point per 500.
+ */
+export function linkedinPaidScore(li: LinkedinMetrics | undefined): number {
+  const impressions = li?.paidImpressions ?? 0;
+  const clicks = li?.paidClicks ?? 0;
+  return impressions / 500 + clicks * 3;
+}
+
+/**
+ * LinkedIn organic score: (organic impressions / 500) + (sqrt(organic
+ * engagement) * 3).
+ *
+ * Organic engagement (likes/comments/shares combined, per Factors.ai) is a
+ * much weaker, much higher-volume signal than a paid click - a single viral
+ * post can rack up hundreds of low-effort likes with no real buying intent
+ * behind it. A linear x*3 multiplier (mirroring the paid formula) let one
+ * post's engagement count dominate an account's score. sqrt() gives
+ * diminishing returns instead: going from 10 to 1000 engagements no longer
+ * multiplies the score by 100x, which better reflects that raw engagement
+ * volume isn't linearly proportional to intent.
+ */
+export function linkedinOrganicScore(li: LinkedinMetrics | undefined): number {
+  const impressions = li?.organicImpressions ?? 0;
+  const engagement = li?.organicEngagements ?? 0;
+  return impressions / 500 + Math.sqrt(engagement) * 3;
+}
 
 /**
  * Percentile rank (0-100) of each value within the array, where ZERO always
@@ -123,11 +136,8 @@ export function computeEngagementScores(
     let sum = 0;
     for (const m of SCORE_METRICS) sum += m.getValue(id, ranks, liMetrics);
 
-    const organicImpressions = liMetrics?.[id]?.organicImpressions ?? 0;
-    const paidImpressions = liMetrics?.[id]?.paidImpressions ?? 0;
-    const impressionPoints = Math.floor((organicImpressions + paidImpressions) / IMPRESSIONS_PER_POINT);
-
-    scores[id] = sum + impressionPoints;
+    const li = liMetrics?.[id];
+    scores[id] = sum + linkedinPaidScore(li) + linkedinOrganicScore(li);
   });
   return scores;
 }
