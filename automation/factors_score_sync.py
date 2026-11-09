@@ -44,16 +44,21 @@ from googleapiclient.discovery import build
 # Load the same .env the Node server uses - one source of truth for credentials.
 load_dotenv(Path(__file__).resolve().parent.parent / "server" / ".env")
 
-SF_LOGIN_URL = os.environ["SF_LOGIN_URL"]
-SF_CONSUMER_KEY = os.environ["SF_CONSUMER_KEY"]
-SF_CONSUMER_SECRET = os.environ["SF_CONSUMER_SECRET"]
+# .strip() every secret read from the environment - GitHub Actions secrets
+# are stored byte-for-byte, so a trailing newline picked up from copy-pasting
+# a value (e.g. SF_LOGIN_URL becoming "https://...salesforce.com\n") silently
+# breaks the first network call that uses it. Confirmed as a real incident:
+# urllib3.exceptions.LocationParseError on SF_LOGIN_URL with a trailing \n.
+SF_LOGIN_URL = os.environ["SF_LOGIN_URL"].strip()
+SF_CONSUMER_KEY = os.environ["SF_CONSUMER_KEY"].strip()
+SF_CONSUMER_SECRET = os.environ["SF_CONSUMER_SECRET"].strip()
 
-GOOGLE_CLIENT_EMAIL = os.environ["GOOGLE_CLIENT_EMAIL"]
-GOOGLE_PRIVATE_KEY = os.environ["GOOGLE_PRIVATE_KEY"].replace("\\n", "\n")
-ENGAGEMENT_SHEET_ID = os.environ["ENGAGEMENT_SHEET_ID"]
+GOOGLE_CLIENT_EMAIL = os.environ["GOOGLE_CLIENT_EMAIL"].strip()
+GOOGLE_PRIVATE_KEY = os.environ["GOOGLE_PRIVATE_KEY"].strip().replace("\\n", "\n")
+ENGAGEMENT_SHEET_ID = os.environ["ENGAGEMENT_SHEET_ID"].strip()
 # The account roster and this script's output now live in the same spreadsheet.
 GOOGLE_SHEET_ID = ENGAGEMENT_SHEET_ID
-GOOGLE_SHEET_TAB = os.environ.get("GOOGLE_SHEET_TAB", "Global_Ecomm_TAL")
+GOOGLE_SHEET_TAB = os.environ.get("GOOGLE_SHEET_TAB", "Global_Ecomm_TAL").strip()
 
 FACTORS_SHEET_TAB = "Factors_Score"
 SOQL_BATCH_SIZE = 300  # stays well under Salesforce's IN-list/URL length limits
