@@ -5,6 +5,8 @@
  * viewer's own browser, never synced anywhere.
  */
 export interface PersistedDashboardState {
+  /** YYYY-MM-DD this state was last saved on - lets a stale month/week selection (left over from a previous calendar day) be told apart from "the user is still looking at this same day's session." */
+  savedOnDate?: string;
   month?: string; // "YYYY-MM"
   weekNums?: number[]; // one or more selected weeks; every week number present = "all weeks"
   search?: string;

@@ -223,6 +223,13 @@ export default function App() {
   // this browser, so switching tabs/reloading to dig into something doesn't
   // throw away where you were. Read once at mount, not on every render.
   const persisted = useMemo(() => loadPersistedState(), []);
+  // A month/week selection left over from a PAST calendar day is stale, not a
+  // deliberate "remember my place" choice - without this check, whichever
+  // week happened to be selected the last time the tab was open would stay
+  // pinned forever (confirmed real bug: dashboard opened on Nov 11, a Week 3
+  // day, still showed Week 2 because that was selected on Nov 8 and persisted
+  // across the days in between). Same-day reloads still restore normally.
+  const persistedIsFromToday = persisted.savedOnDate === todayIso();
 
   // Month dropdown lists every month from go-live through the current real
   // month - grows on its own as time passes, no manual upkeep. Weeks are
@@ -231,7 +238,9 @@ export default function App() {
     () => monthOptionsRange(DASHBOARD_START_MONTH, monthValueOf(new Date())),
     []
   );
-  const [selectedMonth, setSelectedMonth] = useState(() => persisted.month ?? monthValueOf(new Date()));
+  const [selectedMonth, setSelectedMonth] = useState(() =>
+    persistedIsFromToday && persisted.month ? persisted.month : monthValueOf(new Date())
+  );
   const weeks = useMemo(() => {
     const [y, m] = selectedMonth.split("-").map(Number);
     return monthWeeks(new Date(y, m - 1, 1));
@@ -240,7 +249,12 @@ export default function App() {
   // One or more weeks can be selected at once (touchpoint counts sum across
   // all of them - see mergeRankMaps). Defaults to just the current week.
   const [selectedWeekNums, setSelectedWeekNums] = useState<Set<number>>(
-    () => new Set(persisted.weekNums && persisted.weekNums.length > 0 ? persisted.weekNums : [currentWeekNumber(weeks, todayIso())])
+    () =>
+      new Set(
+        persistedIsFromToday && persisted.weekNums && persisted.weekNums.length > 0
+          ? persisted.weekNums
+          : [currentWeekNumber(weeks, todayIso())]
+      )
   );
 
   function selectMonth(month: string) {
@@ -713,6 +727,7 @@ export default function App() {
   useEffect(() => {
     if (regionOptions.length === 0) return;
     savePersistedState({
+      savedOnDate: todayIso(),
       month: selectedMonth,
       weekNums: Array.from(selectedWeekNums),
       search,
