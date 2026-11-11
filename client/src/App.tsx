@@ -531,8 +531,8 @@ export default function App() {
   function toggleColumnSort(col: ColumnSortKey) {
     setColumnSort((prev) =>
       prev && columnSortKeyId(prev.col) === columnSortKeyId(col)
-        ? { col, direction: prev.direction === "asc" ? "desc" : "asc" }
-        : { col, direction: "asc" }
+        ? { col, direction: prev.direction === "desc" ? "asc" : "desc" }
+        : { col, direction: "desc" }
     );
   }
 

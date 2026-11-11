@@ -137,7 +137,11 @@ export function computeEngagementScores(
     for (const m of SCORE_METRICS) sum += m.getValue(id, ranks, liMetrics);
 
     const li = liMetrics?.[id];
-    scores[id] = sum + linkedinPaidScore(li) + linkedinOrganicScore(li);
+    // Rounded to a whole number for display - the LinkedIn paid/organic
+    // formulas (impressions/500, sqrt(engagement)) are inherently fractional,
+    // but the Score pill is meant to read as a single priority number, not a
+    // decimal.
+    scores[id] = Math.round(sum + linkedinPaidScore(li) + linkedinOrganicScore(li));
   });
   return scores;
 }
