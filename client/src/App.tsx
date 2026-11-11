@@ -620,8 +620,24 @@ export default function App() {
       rows.sort((a, b) => {
         const av = columnSortValue(columnSort.col, a.accountId, ranks, currentLiSnapshot?.metrics);
         const bv = columnSortValue(columnSort.col, b.accountId, ranks, currentLiSnapshot?.metrics);
-        const diff = columnSort.direction === "asc" ? av - bv : bv - av;
-        if (diff !== 0) return diff;
+        // Ascending (second click) is meant to surface the lowest NON-ZERO
+        // values first (1, 2, 3, ...), not the blanks - a plain ascending
+        // sort would put every zero-touchpoint account at the very top,
+        // which looks like an empty table. Descending (first click) doesn't
+        // need this: a normal highest-to-lowest sort already puts zeros last
+        // on its own.
+        if (columnSort.direction === "asc") {
+          const aBlank = av === 0;
+          const bBlank = bv === 0;
+          if (aBlank !== bBlank) return aBlank ? 1 : -1;
+          if (!aBlank) {
+            const diff = av - bv;
+            if (diff !== 0) return diff;
+          }
+        } else {
+          const diff = bv - av;
+          if (diff !== 0) return diff;
+        }
         return parseMrr(b.potentialMrr) - parseMrr(a.potentialMrr);
       });
     } else if (combinedMetricScores) {
