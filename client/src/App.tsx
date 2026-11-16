@@ -34,6 +34,16 @@ import { loadPersistedState, savePersistedState } from "./persist";
 const PAGE_SIZE = 25;
 const TOUCHPOINT_KEYS = Object.keys(TOUCHPOINTS) as TouchpointKey[];
 
+// Shown one at a time, in order, while the dashboard is still loading - see
+// the loadingMessageIndex effect below.
+const LOADING_MESSAGES = [
+  "Loading your dashboard…",
+  "Pulling in engagement data…",
+  "Crunching the numbers…",
+  "Almost there…",
+  "Just a little longer…",
+];
+
 // The four effort groups shown as distinct, clearly-labeled sections in the
 // table, left to right: Marketing (what marketing sent/ran) first, then the
 // funnel order MDR -> SDR -> Sales (all three from Outreach.io, split by who
@@ -327,6 +337,7 @@ export default function App() {
   const [rankForRange, setRankForRange] = useState<string | null>(null);
 
   const [liSnapshots, setLiSnapshots] = useState<LinkedinSnapshot[]>([]);
+  const [liLoaded, setLiLoaded] = useState(false);
 
   const [factorsScores, setFactorsScores] = useState<Record<string, FactorsSnapshot>>({});
   const [factorsAsOfDate, setFactorsAsOfDate] = useState<string | null>(null);
@@ -377,7 +388,8 @@ export default function App() {
   useEffect(() => {
     fetchLinkedinSnapshots()
       .then((r) => setLiSnapshots(r.snapshots))
-      .catch((e) => setLoadError(String(e.message || e)));
+      .catch((e) => setLoadError(String(e.message || e)))
+      .finally(() => setLiLoaded(true));
   }, []);
 
   const LI_STALENESS_DAYS = 15;
@@ -470,6 +482,31 @@ export default function App() {
   const ranksReady = rankRangeKey === rankForRange;
   const factorsReady = factorsRangeKey === factorsForRange;
   const weekIncludesToday = dateRange.end >= todayIso();
+
+  // Everything the first paint needs is in by the time all of these are
+  // true. Before that, the table would otherwise render half-populated
+  // (blank scores/touchpoints while ranks/factors are still in flight) -
+  // people were scrolling past that mid-load state and assuming the
+  // dashboard was broken rather than still loading. Gate the whole
+  // dashboard behind a loading screen instead of letting that half-built
+  // state ever paint. loadError short-circuits this - a fetch that
+  // failed outright shouldn't spin forever.
+  const appReady = accounts.length > 0 && ranksReady && factorsReady && liLoaded;
+
+  // Builds anticipation during the (sometimes several-second) initial
+  // load instead of a single static "Loading…" that makes a slow load
+  // feel stuck. Purely cosmetic - cycles on a timer, not tied to actual
+  // progress, since there's no good way to measure "percent done" across
+  // several independent fetches.
+  const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
+  useEffect(() => {
+    if (appReady || loadError) return;
+    const id = setInterval(() => {
+      setLoadingMessageIndex((i) => Math.min(i + 1, LOADING_MESSAGES.length - 1));
+    }, 1800);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appReady, loadError]);
 
   // The Engagement Score every account gets for the selected week - a plain
   // sum of marketing touchpoints (see score.ts for the full reasoning,
@@ -797,6 +834,15 @@ export default function App() {
     setSelectedPriorities(new Set(priorityOptions));
     setSelectedFactorLevels(new Set(factorLevelOptions));
     setSortMetrics(new Set());
+  }
+
+  if (!appReady && !loadError) {
+    return (
+      <div className="app-loading-screen">
+        <div className="app-loading-spinner" />
+        <p className="app-loading-message">{LOADING_MESSAGES[loadingMessageIndex]}</p>
+      </div>
+    );
   }
 
   return (
