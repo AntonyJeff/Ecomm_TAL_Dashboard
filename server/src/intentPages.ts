@@ -81,5 +81,18 @@ function buildMatcher(fragments: string[]): (url: string) => boolean {
   };
 }
 
-export const isHighIntentUrl = buildMatcher(HIGH_INTENT_PATH_FRAGMENTS);
-export const isMediumIntentUrl = buildMatcher(MEDIUM_INTENT_PATH_FRAGMENTS);
+// Blog content is informational by nature, regardless of what it's about -
+// a post titled/tagged "email" (e.g. /blog/email/, /blog/category/email/)
+// isn't someone deliberately visiting the dedicated /email landing page, but
+// the boundary-aware fragment match above can't tell those apart since the
+// path segment itself is just "email" either way. So blog URLs are carved
+// out up front and never scored as High/Medium - they fall through to the
+// low-intent default no matter which fragment they'd otherwise match.
+const isBlogUrl = buildMatcher(["/blog"]);
+
+function excludingBlog(matcher: (url: string) => boolean): (url: string) => boolean {
+  return (url: string) => !isBlogUrl(url) && matcher(url);
+}
+
+export const isHighIntentUrl = excludingBlog(buildMatcher(HIGH_INTENT_PATH_FRAGMENTS));
+export const isMediumIntentUrl = excludingBlog(buildMatcher(MEDIUM_INTENT_PATH_FRAGMENTS));

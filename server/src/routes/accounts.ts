@@ -434,10 +434,35 @@ async function computeRanks(start: string, end: string): Promise<Record<string, 
 // (even after the TTL expires) get the last-known numbers INSTANTLY while a
 // background refresh brings the cache back up to date for next time. Only a
 // week that has genuinely never been requested before has to block.
+// Unbounded until this cap: every distinct {start,end} week/month range ever
+// requested used to get its own permanent entry here (full per-account rank
+// data, ~5,555 accounts each) with nothing ever removing old ones - a slow
+// memory leak that built up over days of normal use (new weeks keep rolling
+// in) until the Node process on Render got OOM-killed (exit 134/SIGABRT).
+// Evicting the oldest-computed entry past this cap keeps memory bounded
+// while still comfortably covering every week/month combo someone would
+// realistically flip between in one sitting.
+const RANK_CACHE_MAX_ENTRIES = 60;
 const rankCache = new Map<string, { computedAt: number; ranks: Record<string, RankEntry> }>();
 const RANK_CACHE_TTL_MS = 10 * 60 * 1000;
 const rankInFlight = new Map<string, Promise<Record<string, RankEntry>>>();
 const recentRankKeys: string[] = []; // most-recently-requested first, deduped, capped
+
+function setRankCache(key: string, ranks: Record<string, RankEntry>) {
+  rankCache.set(key, { computedAt: Date.now(), ranks });
+  while (rankCache.size > RANK_CACHE_MAX_ENTRIES) {
+    let oldestKey: string | null = null;
+    let oldestAt = Infinity;
+    for (const [k, v] of rankCache) {
+      if (v.computedAt < oldestAt) {
+        oldestAt = v.computedAt;
+        oldestKey = k;
+      }
+    }
+    if (oldestKey === null) break;
+    rankCache.delete(oldestKey);
+  }
+}
 
 function touchRecentRankKey(key: string) {
   const i = recentRankKeys.indexOf(key);
@@ -451,7 +476,7 @@ function refreshRankInBackground(key: string, start: string, end: string): Promi
   if (existing) return existing;
   const p = computeRanks(start, end)
     .then((ranks) => {
-      rankCache.set(key, { computedAt: Date.now(), ranks });
+      setRankCache(key, ranks);
       return ranks;
     })
     .finally(() => rankInFlight.delete(key));

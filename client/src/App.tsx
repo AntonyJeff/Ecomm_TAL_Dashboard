@@ -1033,6 +1033,15 @@ export default function App() {
             </th>
             <th colSpan={groupColCount} className="group-header">
               {groupHeaderLabel}
+              {columnSort && (
+                <button
+                  className="col-sort-clear-btn"
+                  title="Back to default view"
+                  onClick={() => setColumnSort(null)}
+                >
+                  ✕ Clear sort
+                </button>
+              )}
             </th>
           </tr>
           <tr>

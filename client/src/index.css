@@ -1028,6 +1028,25 @@ thead .sticky-col {
   padding-bottom: 8px;
 }
 
+.col-sort-clear-btn {
+  margin-left: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--text-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 10px;
+  cursor: pointer;
+}
+
+.col-sort-clear-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 .group-col-marketing,
 .group-col-mdr,
 .group-col-sdr,
