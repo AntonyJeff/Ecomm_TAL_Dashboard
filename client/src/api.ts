@@ -139,11 +139,25 @@ export function fetchRank(range: DateRange) {
   );
 }
 
-export function fetchContactCounts(ids: string[]) {
-  if (ids.length === 0) return Promise.resolve({ counts: {} as Record<string, number> });
-  return getJson<{ counts: Record<string, number> }>(
-    `/api/accounts/contact-counts?ids=${ids.join(",")}`
+// Server caps a single request at 60 ids (see accounts.ts) - chunk larger
+// pages (the pager now goes up to 1000 rows) into multiple requests instead
+// of letting the server reject the whole batch with a 400.
+const CONTACT_COUNTS_CHUNK_SIZE = 60;
+
+export async function fetchContactCounts(ids: string[]) {
+  if (ids.length === 0) return { counts: {} as Record<string, number> };
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += CONTACT_COUNTS_CHUNK_SIZE) {
+    chunks.push(ids.slice(i, i + CONTACT_COUNTS_CHUNK_SIZE));
+  }
+  const results = await Promise.all(
+    chunks.map((chunk) =>
+      getJson<{ counts: Record<string, number> }>(`/api/accounts/contact-counts?ids=${chunk.join(",")}`)
+    )
   );
+  const counts: Record<string, number> = {};
+  for (const r of results) Object.assign(counts, r.counts);
+  return { counts };
 }
 
 export interface ContactsSummary {
