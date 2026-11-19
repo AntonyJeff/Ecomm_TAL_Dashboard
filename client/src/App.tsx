@@ -162,11 +162,13 @@ function sortOptionValue(
  */
 type ColumnSortKey =
   | { kind: "websiteSessions" }
+  | { kind: "score" }
   | { kind: "touchpoint"; tKey: TouchpointKey }
   | { kind: "linkedin"; liKey: keyof LinkedinMetrics };
 
 function columnSortKeyId(col: ColumnSortKey): string {
   if (col.kind === "websiteSessions") return "websiteSessions";
+  if (col.kind === "score") return "score";
   if (col.kind === "touchpoint") return `tp_${col.tKey}`;
   return `li_${col.liKey}`;
 }
@@ -175,8 +177,10 @@ function columnSortValue(
   col: ColumnSortKey,
   accountId: string,
   ranks: Record<string, RankEntry>,
-  liMetrics: Record<string, LinkedinMetrics> | undefined
+  liMetrics: Record<string, LinkedinMetrics> | undefined,
+  scores?: Record<string, number> | null
 ): number {
+  if (col.kind === "score") return scores?.[accountId] ?? 0;
   if (col.kind === "websiteSessions") return ranks[accountId]?.websiteSessions ?? 0;
   if (col.kind === "touchpoint") return ranks[accountId]?.[col.tKey] ?? 0;
   return liMetrics?.[accountId]?.[col.liKey] ?? 0;
@@ -675,8 +679,8 @@ export default function App() {
 
     if (columnSort) {
       rows.sort((a, b) => {
-        const av = columnSortValue(columnSort.col, a.accountId, ranks, currentLiSnapshot?.metrics);
-        const bv = columnSortValue(columnSort.col, b.accountId, ranks, currentLiSnapshot?.metrics);
+        const av = columnSortValue(columnSort.col, a.accountId, ranks, currentLiSnapshot?.metrics, engagementScores);
+        const bv = columnSortValue(columnSort.col, b.accountId, ranks, currentLiSnapshot?.metrics, engagementScores);
         // Ascending (second click) is meant to surface the lowest NON-ZERO
         // values first (1, 2, 3, ...), not the blanks - a plain ascending
         // sort would put every zero-touchpoint account at the very top,
@@ -704,7 +708,33 @@ export default function App() {
         return parseMrr(b.potentialMrr) - parseMrr(a.potentialMrr);
       });
     } else if (ranksReady && engagementScores) {
+      // Default view: most touchpoints across the OPEN tab's own columns
+      // first, so every tab opens with visible activity instead of being
+      // ordered by the marketing-only Score (which left Sales/MDR/SDR
+      // showing blanks for the top rows).
+      const tabTotal = (id: string): number => {
+        if (activeTab === "linkedin") {
+          const m = currentLiSnapshot?.metrics[id];
+          return LINKEDIN_COLUMNS.reduce((n, c) => n + (m?.[c.key] ?? 0), 0);
+        }
+        const keys =
+          activeTab === "marketing"
+            ? MARKETING_TOUCHPOINT_KEYS
+            : activeTab === "mdr"
+            ? MDR_TOUCHPOINT_KEYS
+            : activeTab === "sdr"
+            ? SDR_TOUCHPOINT_KEYS
+            : SALES_TOUCHPOINT_KEYS;
+        const r = ranks[id];
+        let n = activeTab === "marketing" ? r?.websiteSessions ?? 0 : 0;
+        for (const k of keys) n += r?.[k] ?? 0;
+        return n;
+      };
+      const totals: Record<string, number> = {};
+      for (const a of rows) totals[a.accountId] = tabTotal(a.accountId);
       rows.sort((a, b) => {
+        const totalDiff = totals[b.accountId] - totals[a.accountId];
+        if (totalDiff !== 0) return totalDiff;
         const scoreDiff = (engagementScores[b.accountId] ?? 0) - (engagementScores[a.accountId] ?? 0);
         if (scoreDiff !== 0) return scoreDiff;
         return parseMrr(b.potentialMrr) - parseMrr(a.potentialMrr);
@@ -713,7 +743,7 @@ export default function App() {
       rows.sort((a, b) => parseMrr(b.potentialMrr) - parseMrr(a.potentialMrr));
     }
     return rows;
-  }, [accounts, search, selectedRegions, selectedMrr, selectedPriorities, selectedFactorLevels, factorsReady, factorsScores, sortMetrics, ranks, ranksReady, currentLiSnapshot, combinedMetricScores, engagementScores, columnSort]);
+  }, [accounts, search, selectedRegions, selectedMrr, selectedPriorities, selectedFactorLevels, factorsReady, factorsScores, sortMetrics, ranks, ranksReady, currentLiSnapshot, combinedMetricScores, engagementScores, columnSort, activeTab]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const visible = filtered.slice(page * pageSize, page * pageSize + pageSize);
@@ -1082,11 +1112,28 @@ export default function App() {
               Contacts
             </th>
             <th
-              className="sticky-col sticky-col-4"
+              className="sticky-col sticky-col-4 sortable-col"
               rowSpan={2}
-              title="Weighted priority score (0-100) - marketing engagement only. Frozen alongside the identifiers since it's the deciding factor for prioritizing accounts, not just another metric to scroll past."
+              title="Engagement score - marketing engagement only. Click to sort high to low, click again for low to high."
+              onClick={() => toggleColumnSort({ kind: "score" })}
             >
+              {columnSort?.col.kind === "score" && (
+                <button
+                  className="col-sort-clear-btn"
+                  style={{ display: "block", margin: "0 auto 4px" }}
+                  title="Back to default view"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setColumnSort(null);
+                  }}
+                >
+                  ✕ Clear sort
+                </button>
+              )}
               Score
+              {sortArrow({ kind: "score" }) && (
+                <span className="col-sort-arrow">{sortArrow({ kind: "score" })}</span>
+              )}
             </th>
             <th
               className="sticky-col sticky-col-5"
@@ -1101,7 +1148,7 @@ export default function App() {
             </th>
             <th colSpan={groupColCount} className="group-header">
               {groupHeaderLabel}
-              {columnSort && (
+              {columnSort && columnSort.col.kind !== "score" && (
                 <button
                   className="col-sort-clear-btn"
                   title="Back to default view"
