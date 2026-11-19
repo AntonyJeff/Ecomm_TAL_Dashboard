@@ -31,7 +31,8 @@ import { computeEngagementScores, percentileRanks } from "./score";
 import { MetricMultiSelect } from "./components/MetricMultiSelect";
 import { loadPersistedState, savePersistedState } from "./persist";
 
-const PAGE_SIZE = 25;
+const PAGE_SIZE_OPTIONS = [100, 200, 500, 1000] as const;
+const DEFAULT_PAGE_SIZE = 100;
 const TOUCHPOINT_KEYS = Object.keys(TOUCHPOINTS) as TouchpointKey[];
 
 // Shown one at a time, in order, while the dashboard is still loading - see
@@ -329,6 +330,11 @@ export default function App() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState(() => persisted.search ?? "");
   const [page, setPage] = useState(() => persisted.page ?? 0);
+  const [pageSize, setPageSize] = useState(() =>
+    persisted.pageSize && (PAGE_SIZE_OPTIONS as readonly number[]).includes(persisted.pageSize)
+      ? persisted.pageSize
+      : DEFAULT_PAGE_SIZE
+  );
   const [contactCounts, setContactCounts] = useState<Record<string, number>>({});
   const [modal, setModal] = useState<ModalState>(null);
 
@@ -487,26 +493,39 @@ export default function App() {
   // true. Before that, the table would otherwise render half-populated
   // (blank scores/touchpoints while ranks/factors are still in flight) -
   // people were scrolling past that mid-load state and assuming the
-  // dashboard was broken rather than still loading. Gate the whole
-  // dashboard behind a loading screen instead of letting that half-built
-  // state ever paint. loadError short-circuits this - a fetch that
-  // failed outright shouldn't spin forever.
+  // dashboard was broken rather than still loading.
   const appReady = accounts.length > 0 && ranksReady && factorsReady && liLoaded;
+
+  // Latches true the first time appReady is hit, and never goes back to
+  // false - this is what the full-screen loading gate below checks, NOT
+  // appReady directly. appReady alone briefly goes false on every single
+  // filter change too (switching month/week kicks off a fresh rank/factors
+  // fetch), and a full month's worth of Salesforce data can legitimately
+  // take 20s+ to come back - gating the WHOLE dashboard behind the loading
+  // screen on every one of those would hide the table for that whole
+  // stretch on every filter click, which read as "stuck in an infinite
+  // loop" even though it was always going to finish eventually. Once the
+  // dashboard has painted once, later refetches fall back to the table's
+  // own per-cell "-" placeholders instead (same as before the loading
+  // screen existed) rather than wiping the whole page again.
+  const hasLoadedOnceRef = useRef(false);
+  if (appReady) hasLoadedOnceRef.current = true;
+  const showFullScreenLoader = !hasLoadedOnceRef.current && !appReady && !loadError;
 
   // Builds anticipation during the (sometimes several-second) initial
   // load instead of a single static "Loading…" that makes a slow load
   // feel stuck. Purely cosmetic - cycles on a timer, not tied to actual
   // progress, since there's no good way to measure "percent done" across
-  // several independent fetches.
+  // several independent fetches. Loops back to the start instead of
+  // freezing on the last message if the load runs long.
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
   useEffect(() => {
-    if (appReady || loadError) return;
+    if (!showFullScreenLoader) return;
     const id = setInterval(() => {
-      setLoadingMessageIndex((i) => Math.min(i + 1, LOADING_MESSAGES.length - 1));
+      setLoadingMessageIndex((i) => (i + 1) % LOADING_MESSAGES.length);
     }, 1800);
     return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appReady, loadError]);
+  }, [showFullScreenLoader]);
 
   // The Engagement Score every account gets for the selected week - a plain
   // sum of marketing touchpoints (see score.ts for the full reasoning,
@@ -695,8 +714,8 @@ export default function App() {
     return rows;
   }, [accounts, search, selectedRegions, selectedMrr, selectedPriorities, selectedFactorLevels, factorsReady, factorsScores, sortMetrics, ranks, ranksReady, currentLiSnapshot, combinedMetricScores, engagementScores, columnSort]);
 
-  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const visible = filtered.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const visible = filtered.slice(page * pageSize, page * pageSize + pageSize);
 
   // UI trial (redesign-tabbed-kpi): Factor Score split for the KPI strip -
   // computed over every currently-filtered account (not just the visible
@@ -754,7 +773,7 @@ export default function App() {
       return;
     }
     setPage(0);
-  }, [search, selectedRegions, selectedMrr, selectedPriorities, selectedFactorLevels, rankForRange, sortMetrics, selectedMonth]);
+  }, [search, selectedRegions, selectedMrr, selectedPriorities, selectedFactorLevels, rankForRange, sortMetrics, selectedMonth, pageSize]);
 
   // Keyed directly on which accounts are actually visible (not on the things
   // that typically cause that to change) - sorting can reorder the visible
@@ -790,6 +809,7 @@ export default function App() {
       factorLevels: Array.from(selectedFactorLevels),
       sortMetrics: Array.from(sortMetrics),
       page,
+      pageSize,
       groupTab: activeTab,
     });
   }, [
@@ -802,6 +822,7 @@ export default function App() {
     selectedFactorLevels,
     sortMetrics,
     page,
+    pageSize,
     regionOptions.length,
     activeTab,
   ]);
@@ -836,7 +857,7 @@ export default function App() {
     setSortMetrics(new Set());
   }
 
-  if (!appReady && !loadError) {
+  if (showFullScreenLoader) {
     return (
       <div className="app-loading-screen">
         <div className="app-loading-spinner" />
@@ -1381,6 +1402,16 @@ export default function App() {
         <button disabled={page >= pageCount - 1} onClick={() => setPage((p) => p + 1)}>
           Next →
         </button>
+        <label className="pager-page-size">
+          Rows per page
+          <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}>
+            {PAGE_SIZE_OPTIONS.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       {modal?.kind === "contacts" && (

@@ -17,6 +17,7 @@ export interface PersistedDashboardState {
   sortMetrics?: string[]; // also carries "highIntent"/"mediumIntent" filter checkboxes
   groupTab?: string; // UI trial (redesign-tabbed-kpi): which column group tab was active
   page?: number;
+  pageSize?: number;
 }
 
 const STORAGE_KEY = "ecommTalDashboard.v1";
