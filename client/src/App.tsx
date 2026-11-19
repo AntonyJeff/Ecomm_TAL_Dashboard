@@ -1031,7 +1031,7 @@ export default function App() {
             options={SORT_OPTIONS}
             selected={sortMetrics}
             onChange={setSortMetrics}
-            defaultLabel="Engagement: Score"
+            defaultLabel="Filters"
           />
           {activeFilterCount > 0 && (
             <button className="clear-all-link" onClick={clearAllFilters}>

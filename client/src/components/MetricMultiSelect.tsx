@@ -45,8 +45,8 @@ export function MetricMultiSelect({
     selected.size === 0
       ? defaultLabel
       : selected.size === 1
-      ? `Engagement: ${options.find((o) => selected.has(o.key))?.label}`
-      : `Engagement: ${selected.size} metrics`;
+      ? `Filters: ${options.find((o) => selected.has(o.key))?.label}`
+      : `Filters: ${selected.size} selected`;
 
   return (
     <div className="col-filter" ref={ref}>
