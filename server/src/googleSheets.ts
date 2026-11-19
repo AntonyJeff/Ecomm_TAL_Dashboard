@@ -1,4 +1,5 @@
-import { google } from "googleapis";
+import { google, type sheets_v4 } from "googleapis";
+import { createCachedLoader } from "./cache.js";
 
 const ENGAGEMENT_SHEET_ID = process.env.ENGAGEMENT_SHEET_ID!;
 // Everything now lives in one spreadsheet (ENGAGEMENT_SHEET_ID) as separate tabs -
@@ -6,13 +7,26 @@ const ENGAGEMENT_SHEET_ID = process.env.ENGAGEMENT_SHEET_ID!;
 const SHEET_ID = ENGAGEMENT_SHEET_ID;
 const SHEET_TAB = process.env.GOOGLE_SHEET_TAB || "Global_Ecomm_TAL";
 
-function getAuth() {
-  const privateKey = (process.env.GOOGLE_PRIVATE_KEY || "").replace(/\\n/g, "\n");
-  return new google.auth.JWT({
-    email: process.env.GOOGLE_CLIENT_EMAIL,
-    key: privateKey,
-    scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
-  });
+// One client for the whole process: the JWT client caches its access token
+// (~1h) internally, whereas building a new one per read forced a fresh OAuth
+// token exchange before every single sheet fetch.
+let sheetsClient: sheets_v4.Sheets | null = null;
+function getSheets(): sheets_v4.Sheets {
+  if (!sheetsClient) {
+    const privateKey = (process.env.GOOGLE_PRIVATE_KEY || "").replace(/\\n/g, "\n");
+    const auth = new google.auth.JWT({
+      email: process.env.GOOGLE_CLIENT_EMAIL,
+      key: privateKey,
+      scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+    });
+    sheetsClient = google.sheets({ version: "v4", auth });
+  }
+  return sheetsClient;
+}
+
+async function readRange(range: string): Promise<string[][]> {
+  const res = await getSheets().spreadsheets.values.get({ spreadsheetId: SHEET_ID, range });
+  return (res.data.values as string[][]) || [];
 }
 
 export interface SheetAccount {
@@ -37,29 +51,27 @@ export function normalizeDomain(d: string): string {
     .replace(/\/.*$/, "");
 }
 
-let cache: { rows: SheetAccount[]; fetchedAt: number } | null = null;
-const CACHE_TTL_MS = 5 * 60 * 1000;
-
 function normalizeHeader(h: string): string {
   return h.trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
-export async function getAccountsFromSheet(force = false): Promise<SheetAccount[]> {
-  if (!force && cache && Date.now() - cache.fetchedAt < CACHE_TTL_MS) {
-    return cache.rows;
-  }
+const accountsLoader = createCachedLoader("accounts-sheet", loadAccounts, {
+  ttlMs: 5 * 60 * 1000,
+  maxStaleMs: 60 * 60 * 1000,
+});
 
-  const sheets = google.sheets({ version: "v4", auth: getAuth() });
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SHEET_ID,
-    range: `${SHEET_TAB}!A1:Z`,
-  });
+export function getAccountsFromSheet(force = false): Promise<SheetAccount[]> {
+  return accountsLoader.get({ force });
+}
 
-  const values = res.data.values || [];
-  if (values.length === 0) {
-    cache = { rows: [], fetchedAt: Date.now() };
-    return [];
-  }
+/** Bumps whenever the roster is reloaded - for caches derived from it. */
+export function accountsVersion(): number {
+  return accountsLoader.version();
+}
+
+async function loadAccounts(): Promise<SheetAccount[]> {
+  const values = await readRange(`${SHEET_TAB}!A1:Z`);
+  if (values.length === 0) return [];
 
   const headers = values[0].map(normalizeHeader);
   const idx = {
@@ -85,24 +97,22 @@ export async function getAccountsFromSheet(force = false): Promise<SheetAccount[
     }))
     .filter((r) => r.accountId);
 
-  cache = { rows, fetchedAt: Date.now() };
   return rows;
 }
 
-/** domain (normalized) -> accountId, built from the Global sheet's Website column. */
-let domainMapCache: { map: Map<string, string>; fetchedAt: number } | null = null;
+/** domain (normalized) -> accountId, built from the Global sheet's Website column. Rebuilt only when the roster reloads. */
+let domainMapCache: { map: Map<string, string>; version: number } | null = null;
 
 export async function getDomainToAccountId(): Promise<Map<string, string>> {
-  if (domainMapCache && Date.now() - domainMapCache.fetchedAt < CACHE_TTL_MS) {
-    return domainMapCache.map;
-  }
   const accounts = await getAccountsFromSheet();
+  const version = accountsLoader.version();
+  if (domainMapCache && domainMapCache.version === version) return domainMapCache.map;
   const map = new Map<string, string>();
   for (const a of accounts) {
     const d = normalizeDomain(a.website);
     if (d) map.set(d, a.accountId);
   }
-  domainMapCache = { map, fetchedAt: Date.now() };
+  domainMapCache = { map, version };
   return map;
 }
 
@@ -122,25 +132,20 @@ export interface WebsiteSessionRow {
   latestPageUrl: string;
 }
 
-let sessionsCache: { rows: WebsiteSessionRow[]; fetchedAt: number } | null = null;
-const SESSIONS_CACHE_TTL_MS = 2 * 60 * 1000; // this feed is "real time", so keep it fresher
+// This feed is near real time, so it's kept fresher and never served more
+// than 10 minutes stale.
+const sessionsLoader = createCachedLoader("website-sessions-sheet", loadWebsiteSessions, {
+  ttlMs: 2 * 60 * 1000,
+  maxStaleMs: 10 * 60 * 1000,
+});
 
-export async function getWebsiteSessions(force = false): Promise<WebsiteSessionRow[]> {
-  if (!force && sessionsCache && Date.now() - sessionsCache.fetchedAt < SESSIONS_CACHE_TTL_MS) {
-    return sessionsCache.rows;
-  }
+export function getWebsiteSessions(force = false): Promise<WebsiteSessionRow[]> {
+  return sessionsLoader.get({ force });
+}
 
-  const sheets = google.sheets({ version: "v4", auth: getAuth() });
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: ENGAGEMENT_SHEET_ID,
-    range: "Website_Sessions!A1:Z",
-  });
-
-  const values = res.data.values || [];
-  if (values.length === 0) {
-    sessionsCache = { rows: [], fetchedAt: Date.now() };
-    return [];
-  }
+async function loadWebsiteSessions(): Promise<WebsiteSessionRow[]> {
+  const values = await readRange("Website_Sessions!A1:Z");
+  if (values.length === 0) return [];
 
   const headers = values[0].map(normalizeHeader);
   const idx = {
@@ -164,7 +169,6 @@ export async function getWebsiteSessions(force = false): Promise<WebsiteSessionR
       latestPageUrl: idx.latestPageUrl >= 0 ? r[idx.latestPageUrl] ?? "" : "",
     }));
 
-  sessionsCache = { rows, fetchedAt: Date.now() };
   return rows;
 }
 
@@ -179,8 +183,10 @@ export interface LinkedinSnapshotRow {
   paidClicks: number;
 }
 
-let linkedinCache: { rows: LinkedinSnapshotRow[]; fetchedAt: number } | null = null;
-const LINKEDIN_CACHE_TTL_MS = 10 * 60 * 1000;
+const linkedinLoader = createCachedLoader("linkedin-sheet", loadLinkedinSnapshotRows, {
+  ttlMs: 10 * 60 * 1000,
+  maxStaleMs: 60 * 60 * 1000,
+});
 
 function num(v: any): number {
   const n = Number(v);
@@ -197,22 +203,17 @@ function num(v: any): number {
  * Multiple rows per account per snapshot = multiple campaigns, not multiple
  * days - this data has no daily granularity, only whole snapshots.
  */
-export async function getLinkedinSnapshotRows(force = false): Promise<LinkedinSnapshotRow[]> {
-  if (!force && linkedinCache && Date.now() - linkedinCache.fetchedAt < LINKEDIN_CACHE_TTL_MS) {
-    return linkedinCache.rows;
-  }
+export function getLinkedinSnapshotRows(force = false): Promise<LinkedinSnapshotRow[]> {
+  return linkedinLoader.get({ force });
+}
 
-  const sheets = google.sheets({ version: "v4", auth: getAuth() });
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: ENGAGEMENT_SHEET_ID,
-    range: "Linkedin!A1:Z",
-  });
+export function linkedinVersion(): number {
+  return linkedinLoader.version();
+}
 
-  const values = res.data.values || [];
-  if (values.length === 0) {
-    linkedinCache = { rows: [], fetchedAt: Date.now() };
-    return [];
-  }
+async function loadLinkedinSnapshotRows(): Promise<LinkedinSnapshotRow[]> {
+  const values = await readRange("Linkedin!A1:Z");
+  if (values.length === 0) return [];
 
   const headers = values[0].map(normalizeHeader);
   const idx = {
@@ -254,7 +255,6 @@ export async function getLinkedinSnapshotRows(force = false): Promise<LinkedinSn
     });
   }
 
-  linkedinCache = { rows, fetchedAt: Date.now() };
   return rows;
 }
 
@@ -267,8 +267,24 @@ export interface FactorsScoreRow {
   topEngagementSignals: string;
 }
 
-let factorsScoreCache: { rows: FactorsScoreRow[]; fetchedAt: number } | null = null;
-const FACTORS_SCORE_CACHE_TTL_MS = 5 * 60 * 1000;
+/**
+ * The Factors history pre-grouped by day and by account, built once per sheet
+ * reload. The sheet grows by ~5,500 rows every night, so callers that used to
+ * scan every row on every request (to find one day, or one account) now do a
+ * direct lookup instead.
+ */
+export interface FactorsScoreIndex {
+  rows: FactorsScoreRow[];
+  /** Every runDate present, ascending. */
+  dates: string[];
+  byDate: Map<string, FactorsScoreRow[]>;
+  byAccount: Map<string, FactorsScoreRow[]>;
+}
+
+const factorsScoreLoader = createCachedLoader("factors-score-sheet", loadFactorsScoreIndex, {
+  ttlMs: 5 * 60 * 1000,
+  maxStaleMs: 30 * 60 * 1000,
+});
 
 /**
  * Daily append-only history written by automation/factors_score_sync.py - one
@@ -277,21 +293,31 @@ const FACTORS_SCORE_CACHE_TTL_MS = 5 * 60 * 1000;
  * of that week, even after the live Salesforce field has since moved on.
  */
 export async function getFactorsScoreRows(force = false): Promise<FactorsScoreRow[]> {
-  if (!force && factorsScoreCache && Date.now() - factorsScoreCache.fetchedAt < FACTORS_SCORE_CACHE_TTL_MS) {
-    return factorsScoreCache.rows;
-  }
+  return (await factorsScoreLoader.get({ force })).rows;
+}
 
-  const sheets = google.sheets({ version: "v4", auth: getAuth() });
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: ENGAGEMENT_SHEET_ID,
-    range: "Factors_Score!A1:O",
-  });
+export function getFactorsScoreIndex(force = false): Promise<FactorsScoreIndex> {
+  return factorsScoreLoader.get({ force });
+}
 
-  const values = res.data.values || [];
-  if (values.length === 0) {
-    factorsScoreCache = { rows: [], fetchedAt: Date.now() };
-    return [];
+async function loadFactorsScoreIndex(): Promise<FactorsScoreIndex> {
+  const rows = await loadFactorsScoreRows();
+  const byDate = new Map<string, FactorsScoreRow[]>();
+  const byAccount = new Map<string, FactorsScoreRow[]>();
+  for (const r of rows) {
+    let d = byDate.get(r.runDate);
+    if (!d) byDate.set(r.runDate, (d = []));
+    d.push(r);
+    let a = byAccount.get(r.accountId);
+    if (!a) byAccount.set(r.accountId, (a = []));
+    a.push(r);
   }
+  return { rows, dates: Array.from(byDate.keys()).sort(), byDate, byAccount };
+}
+
+async function loadFactorsScoreRows(): Promise<FactorsScoreRow[]> {
+  const values = await readRange("Factors_Score!A1:O");
+  if (values.length === 0) return [];
 
   const headers = values[0].map(normalizeHeader);
   const idx = {
@@ -317,6 +343,5 @@ export async function getFactorsScoreRows(force = false): Promise<FactorsScoreRo
       };
     });
 
-  factorsScoreCache = { rows, fetchedAt: Date.now() };
   return rows;
 }

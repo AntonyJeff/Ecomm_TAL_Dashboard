@@ -16,6 +16,24 @@ async function getJson<T>(path: string): Promise<T> {
   return res.json();
 }
 
+// Short-lived in-memory cache for the per-week calls, so flipping back to a
+// week/month already viewed in this session is instant instead of another
+// round trip to Render. Also shares one request between callers asking for
+// the same URL at the same time. Failed requests are not cached.
+const RESPONSE_CACHE_TTL_MS = 3 * 60 * 1000;
+const responseCache = new Map<string, { at: number; promise: Promise<unknown> }>();
+
+function getJsonCached<T>(path: string): Promise<T> {
+  const hit = responseCache.get(path);
+  if (hit && Date.now() - hit.at < RESPONSE_CACHE_TTL_MS) return hit.promise as Promise<T>;
+  const promise = getJson<T>(path);
+  responseCache.set(path, { at: Date.now(), promise });
+  promise.catch(() => {
+    if (responseCache.get(path)?.promise === promise) responseCache.delete(path);
+  });
+  return promise;
+}
+
 export function fetchAccounts() {
   return getJson<{ accounts: SheetAccount[]; total: number; instanceUrl: string }>("/api/accounts");
 }
@@ -126,17 +144,37 @@ export function mergeRankMaps(maps: Record<string, RankEntry>[]): Record<string,
   return out;
 }
 
+const RANK_KEYS: (keyof RankEntry)[] = [
+  ...(Object.keys(TOUCHPOINTS) as TouchpointKey[]),
+  "websiteSessions",
+  "highIntentSessions",
+  "mediumIntentSessions",
+];
+
+/** A zero-filled entry - what an account with no activity in the period has. */
+export const EMPTY_RANK_ENTRY: RankEntry = Object.freeze(
+  Object.fromEntries(RANK_KEYS.map((k) => [k, 0])) as RankEntry
+);
+
 /**
- * Every touchpoint count (+ website sessions) for EVERY account in the given
- * date range - used to sort the table. `cached: "stale"` means you got the
- * last-known numbers instantly while the server refreshes them in the
- * background (stale-while-revalidate) - safe to treat the same as `true`
- * for display purposes, just slightly behind.
+ * Every touchpoint count (+ website sessions) for the given date range -
+ * used to sort the table. Requested in sparse form: only accounts with at
+ * least one non-zero count come back, each with only its non-zero keys
+ * (~2.6MB -> ~90KB for a typical week). Present entries are expanded to
+ * full zero-filled ones here; an account missing from the result had no
+ * activity at all, so callers should treat it as EMPTY_RANK_ENTRY.
  */
-export function fetchRank(range: DateRange) {
-  return getJson<{ ranks: Record<string, RankEntry>; cached: boolean | "stale" }>(
-    `/api/accounts/rank?${rangeParams(range)}`
+export async function fetchRank(range: DateRange) {
+  const params = rangeParams(range);
+  params.set("sparse", "1");
+  const res = await getJsonCached<{ ranks: Record<string, Partial<RankEntry>>; cached: boolean }>(
+    `/api/accounts/rank?${params}`
   );
+  const ranks: Record<string, RankEntry> = {};
+  for (const [accountId, entry] of Object.entries(res.ranks)) {
+    ranks[accountId] = { ...EMPTY_RANK_ENTRY, ...entry };
+  }
+  return { ranks, cached: res.cached };
 }
 
 // Server caps a single request at 60 ids (see accounts.ts) - chunk larger
@@ -241,7 +279,7 @@ export interface FactorsSnapshot {
  * until tonight's automation run. `isLive` tells you which one you got.
  */
 export function fetchFactorsScores(range: DateRange) {
-  return getJson<{ asOfDate: string; isLive: boolean; byAccount: Record<string, FactorsSnapshot> }>(
+  return getJsonCached<{ asOfDate: string; isLive: boolean; byAccount: Record<string, FactorsSnapshot> }>(
     `/api/accounts/factors-score?${rangeParams(range)}`
   );
 }
@@ -297,5 +335,5 @@ export interface FactorSpikesResult {
  * a day yet.
  */
 export function fetchFactorSpikes(range: DateRange) {
-  return getJson<FactorSpikesResult>(`/api/accounts/factor-spikes?${rangeParams(range)}`);
+  return getJsonCached<FactorSpikesResult>(`/api/accounts/factor-spikes?${rangeParams(range)}`);
 }

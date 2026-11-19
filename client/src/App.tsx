@@ -6,6 +6,7 @@ import {
   fetchFactorsScores,
   fetchRank,
   mergeRankMaps,
+  EMPTY_RANK_ENTRY,
   TOUCHPOINTS,
   TOUCHPOINT_SOURCE,
   type DateRange,
@@ -1200,7 +1201,7 @@ export default function App() {
         <tbody>
           {visible.map((a) => {
             const contacts = contactCounts[a.accountId];
-            const r = ranksReady ? ranks[a.accountId] : undefined;
+            const r = ranksReady ? ranks[a.accountId] ?? EMPTY_RANK_ENTRY : undefined;
             const li = currentLiSnapshot?.metrics[a.accountId];
             return (
               <tr key={a.accountId}>

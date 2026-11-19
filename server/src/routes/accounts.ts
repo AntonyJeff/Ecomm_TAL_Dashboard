@@ -4,10 +4,13 @@ import {
   getDomainToAccountId,
   getWebsiteSessions,
   getLinkedinSnapshotRows,
-  getFactorsScoreRows,
+  getFactorsScoreIndex,
+  linkedinVersion,
+  accountsVersion,
   normalizeDomain,
 } from "../googleSheets.js";
 import { soqlQuery, getInstanceUrl, chunk, mapWithConcurrency } from "../salesforce.js";
+import { createCachedLoader } from "../cache.js";
 import { isHighIntentUrl, isMediumIntentUrl } from "../intentPages.js";
 
 export const accountsRouter = Router();
@@ -225,6 +228,16 @@ accountsRouter.get("/contact-counts", async (req, res) => {
       return res.status(400).json({ error: "Request at most 60 account ids at a time" });
     }
 
+    // Served from the cached Contact map whenever it has loaded (normally
+    // always, after startup prewarm) - no Salesforce round trip per page.
+    const contactMap = contactMapLoader.peek();
+    if (contactMap) {
+      const counts: Record<string, number> = {};
+      for (const id of ids) counts[id] = contactMap.countByAccount.get(id) ?? 0;
+      return res.json({ counts });
+    }
+    contactMapLoader.get().catch((err) => console.error("[contact-counts] contact map load failed:", err));
+
     const idList = ids.map((id) => `'${esc(id)}'`).join(",");
     const rows = await soqlQuery<{ AccountId: string }>(
       `SELECT AccountId FROM Contact WHERE AccountId IN (${idList})`
@@ -252,22 +265,26 @@ function emptyRankEntry(): RankEntry {
   return e;
 }
 
-// The Contact -> Account map never depends on the selected date range, but
-// computeRanks() used to rebuild it from scratch (~19 SOQL queries) on every
-// single week switch. Caching it independently means that cost is paid once
-// per TTL window total, not once per distinct week clicked.
-let contactMapCache: { computedAt: number; contactToAccount: Map<string, string> } | null = null;
-const CONTACT_MAP_TTL_MS = 10 * 60 * 1000;
+// The Contact -> Account map never depends on the selected date range, so it
+// is cached independently of any one week. Also carries the contact count per
+// account, which is what the "# contacts" column shows - serving that from
+// here avoids a separate Salesforce query on every page of the table.
+interface ContactMap {
+  contactToAccount: Map<string, string>;
+  countByAccount: Map<string, number>;
+}
 
-async function getContactToAccountMap(): Promise<{ contactToAccount: Map<string, string> }> {
-  if (contactMapCache && Date.now() - contactMapCache.computedAt < CONTACT_MAP_TTL_MS) {
-    return contactMapCache;
-  }
+const contactMapLoader = createCachedLoader("contact-map", loadContactMap, {
+  ttlMs: 10 * 60 * 1000,
+  maxStaleMs: 2 * 60 * 60 * 1000,
+});
 
+async function loadContactMap(): Promise<ContactMap> {
   const accounts = await getAccountsFromSheet();
   const accountIds = accounts.map((a) => a.accountId);
 
   const contactToAccount = new Map<string, string>();
+  const countByAccount = new Map<string, number>();
   const contactChunks = await mapWithConcurrency(chunk(accountIds, 300), 8, async (idBatch) => {
     const inList = idBatch.map((id) => `'${esc(id)}'`).join(",");
     return soqlQuery<{ Id: string; AccountId: string }>(
@@ -275,11 +292,12 @@ async function getContactToAccountMap(): Promise<{ contactToAccount: Map<string,
     );
   });
   for (const rows of contactChunks) {
-    for (const c of rows) contactToAccount.set(c.Id, c.AccountId);
+    for (const c of rows) {
+      contactToAccount.set(c.Id, c.AccountId);
+      countByAccount.set(c.AccountId, (countByAccount.get(c.AccountId) ?? 0) + 1);
+    }
   }
-
-  contactMapCache = { computedAt: Date.now(), contactToAccount };
-  return contactMapCache;
+  return { contactToAccount, countByAccount };
 }
 
 /**
@@ -300,14 +318,12 @@ async function getContactToAccountMap(): Promise<{ contactToAccount: Map<string,
  * agree - so Company_Account_ID__c is used first for its much wider
  * coverage, falling back to Account__c only when the former is blank.
  */
-let leadMapCache: { computedAt: number; leadToAccount: Map<string, string> } | null = null;
-const LEAD_MAP_TTL_MS = 10 * 60 * 1000;
+const leadMapLoader = createCachedLoader("lead-map", loadLeadMap, {
+  ttlMs: 10 * 60 * 1000,
+  maxStaleMs: 2 * 60 * 60 * 1000,
+});
 
-async function getLeadToAccountMap(): Promise<{ leadToAccount: Map<string, string> }> {
-  if (leadMapCache && Date.now() - leadMapCache.computedAt < LEAD_MAP_TTL_MS) {
-    return leadMapCache;
-  }
-
+async function loadLeadMap(): Promise<Map<string, string>> {
   const accounts = await getAccountsFromSheet();
   const accountIdSet = new Set(accounts.map((a) => a.accountId));
   const accountIds = accounts.map((a) => a.accountId);
@@ -330,21 +346,74 @@ async function getLeadToAccountMap(): Promise<{ leadToAccount: Map<string, strin
       if (accId) leadToAccount.set(l.Id, accId);
     }
   }
-
-  leadMapCache = { computedAt: Date.now(), leadToAccount };
-  return leadMapCache;
+  return leadToAccount;
 }
 
-/** Every Task's WhoId is either a Contact or a Lead - this merges both maps into one lookup so callers don't need to care which. */
-async function getWhoIdToAccountMap(): Promise<Map<string, string>> {
-  const [{ contactToAccount }, { leadToAccount }] = await Promise.all([
-    getContactToAccountMap(),
-    getLeadToAccountMap(),
-  ]);
-  const merged = new Map(contactToAccount);
-  for (const [whoId, accId] of leadToAccount) merged.set(whoId, accId);
-  return merged;
+/**
+ * Every Task's WhoId is either a Contact or a Lead - this merges both maps
+ * into one lookup so callers don't need to care which, plus the reverse
+ * (account -> every Contact/Lead Id) for the per-account popups. Rebuilt only
+ * when one of the two underlying maps actually reloads, not on every call.
+ */
+interface WhoIndex {
+  whoToAccount: Map<string, string>;
+  whoIdsByAccount: Map<string, string[]>;
 }
+let whoIndexCache: { contactVer: number; leadVer: number; index: WhoIndex } | null = null;
+
+function buildWhoIndex(contacts: ContactMap, leads: Map<string, string>): WhoIndex {
+  const contactVer = contactMapLoader.version();
+  const leadVer = leadMapLoader.version();
+  if (whoIndexCache && whoIndexCache.contactVer === contactVer && whoIndexCache.leadVer === leadVer) {
+    return whoIndexCache.index;
+  }
+  const whoToAccount = new Map(contacts.contactToAccount);
+  for (const [whoId, accId] of leads) whoToAccount.set(whoId, accId);
+  const whoIdsByAccount = new Map<string, string[]>();
+  for (const [whoId, accId] of whoToAccount) {
+    let list = whoIdsByAccount.get(accId);
+    if (!list) whoIdsByAccount.set(accId, (list = []));
+    list.push(whoId);
+  }
+  const index = { whoToAccount, whoIdsByAccount };
+  whoIndexCache = { contactVer, leadVer, index };
+  return index;
+}
+
+async function getWhoIndex(): Promise<WhoIndex> {
+  const [contacts, leads] = await Promise.all([contactMapLoader.get(), leadMapLoader.get()]);
+  return buildWhoIndex(contacts, leads);
+}
+
+/** The index only if both maps have already loaded at least once - never waits on Salesforce. */
+function peekWhoIndex(): WhoIndex | undefined {
+  const contacts = contactMapLoader.peek();
+  const leads = leadMapLoader.peek();
+  return contacts && leads ? buildWhoIndex(contacts, leads) : undefined;
+}
+
+/**
+ * Task owner -> mdr/sdr bucket, keyed by User Id. The rank scan used to pull
+ * Owner.Name on every Task (a relationship join adding a nested object to
+ * every one of tens of thousands of rows) just to compare it against the
+ * named lists above; resolving the handful of named Users once gives the
+ * exact same split. Anyone not in either list is "sales", as before.
+ */
+const ownerSourceLoader = createCachedLoader(
+  "owner-sources",
+  async () => {
+    const users = await soqlQuery<{ Id: string; Name: string }>(
+      `SELECT Id, Name FROM User WHERE Name IN (${ALL_MDR_SDR_NAMES_SOQL})`
+    );
+    const byId = new Map<string, "mdr" | "sdr">();
+    for (const u of users) {
+      if (MDR_OWNER_NAMES.has(u.Name)) byId.set(u.Id, "mdr");
+      else if (SDR_OWNER_NAMES.has(u.Name)) byId.set(u.Id, "sdr");
+    }
+    return byId;
+  },
+  { ttlMs: 6 * 60 * 60 * 1000, maxStaleMs: 24 * 60 * 60 * 1000 }
+);
 
 // Flattened (key, pattern) pairs - a key like mdrCalls contributes one entry
 // per pattern it accepts (Outreach-answered AND manually-logged outbound
@@ -353,182 +422,281 @@ const TOUCHPOINT_PATTERNS = TOUCHPOINT_KEYS.flatMap((key) =>
   TOUCHPOINTS[key].patterns.map((p) => ({ key, ...p, source: TOUCHPOINTS[key].source }))
 );
 
-async function computeRanks(start: string, end: string): Promise<Record<string, RankEntry>> {
-  const dateClause = dateRangeClause({ start, end });
-  const [accounts, whoIdToAccount] = await Promise.all([
-    getAccountsFromSheet(),
-    getWhoIdToAccountMap(),
-  ]);
+/**
+ * Touchpoint counts are plain counts, so a date range's totals are exactly
+ * the sum of its individual days' totals. Ranks are therefore computed and
+ * cached PER DAY, and any week/month/multi-week selection is assembled by
+ * summing cached days:
+ *  - Switching Week 1 -> Week 2 -> whole month -> Week 1 only ever fetches
+ *    days that haven't been seen yet; a month already viewed week by week
+ *    costs zero Salesforce calls.
+ *  - Days that do need fetching run as independent queries in parallel,
+ *    instead of one big query whose results come back as a strictly
+ *    sequential chain of 2,000-row pages (a full month was ~30-50 back-to-back
+ *    round trips, which is what made month views take 20s+, and worse from
+ *    Render than from a laptop since every round trip pays the network
+ *    latency again).
+ *  - Past days barely change, so they're kept for hours; recent days (where
+ *    email/WhatsApp syncs land ~1 day late and reps log calls after the
+ *    fact) refresh every few minutes.
+ * Only the sparse non-zero counts are stored: on a typical day well under a
+ * third of the 5,555 accounts have any activity at all.
+ */
+type DayCounts = Map<string, Partial<Record<TouchpointKey, number>>>;
 
-  const ranks: Record<string, RankEntry> = {};
-  for (const a of accounts) ranks[a.accountId] = emptyRankEntry();
+const RANK_SUBJECT_OR = Array.from(new Set(TOUCHPOINT_PATTERNS.map((p) => patternClause(p)))).join(" OR ");
+const RECENT_DAY_WINDOW = 3;
+const DAY_CACHE_MAX_ENTRIES = 400;
+const MAX_RANGE_DAYS = 400;
 
-  // One single query for the whole org, instead of chunking our ~5,500
-  // accounts' contacts into dozens of "WhoId IN (...)" batches. Measured
-  // against live data: fetching ALL matching Tasks company-wide for a week
-  // (~15k-27k rows) takes 3-5s as ONE query (SOQL pagination handles the
-  // row volume automatically), versus 6s+ for the old chunked version doing
-  // 50+ small queries - fewer, bigger round trips beats many small ones here.
-  // Rows for contacts/leads outside our 5,555 TAL accounts are simply
-  // discarded below via the whoIdToAccount lookup. WhoId resolves against
-  // EITHER a Contact or a Lead (see getWhoIdToAccountMap) - a real,
-  // confirmed gap was that Lead-owned touches were silently dropped
-  // entirely when only Contacts were checked. Owner.Name is needed to split
-  // Outreach.io touches into MDR vs SDR vs Sales (see TOUCHPOINTS doc comment).
-  const uniqueClauses = Array.from(new Set(TOUCHPOINT_PATTERNS.map((p) => patternClause(p))));
-  const subjectOr = uniqueClauses.join(" OR ");
-  const tasks = await soqlQuery<{
-    WhoId: string;
-    Subject: string;
-    TaskSubtype: string | null;
-    Owner: { Name: string } | null;
-  }>(`SELECT WhoId, Subject, TaskSubtype, Owner.Name FROM Task WHERE (${subjectOr})${dateClause}`);
+const dayCache = new Map<string, { loadedAt: number; counts: DayCounts }>();
+const dayInFlight = new Map<string, Promise<DayCounts>>();
+const sfDaySlots = createSemaphore(6);
 
+function createSemaphore(limit: number) {
+  let active = 0;
+  const waiting: (() => void)[] = [];
+  return async function run<T>(fn: () => Promise<T>): Promise<T> {
+    if (active >= limit) await new Promise<void>((resolve) => waiting.push(resolve));
+    active++;
+    try {
+      return await fn();
+    } finally {
+      active--;
+      waiting.shift()?.();
+    }
+  };
+}
+
+function addDays(isoDate: string, n: number): string {
+  const d = new Date(`${isoDate}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+function daysInRange(start: string, end: string): string[] {
+  const days: string[] = [];
+  for (let d = start; d <= end; d = addDays(d, 1)) {
+    days.push(d);
+    if (days.length > MAX_RANGE_DAYS) throw new Error(`Date range too large (max ${MAX_RANGE_DAYS} days)`);
+  }
+  return days;
+}
+
+function dayPolicy(day: string): { ttlMs: number; maxStaleMs: number } {
+  const recent = day >= addDays(todayIsoIST(), -RECENT_DAY_WINDOW);
+  return recent
+    ? { ttlMs: 10 * 60 * 1000, maxStaleMs: 60 * 60 * 1000 }
+    : { ttlMs: 6 * 60 * 60 * 1000, maxStaleMs: 24 * 60 * 60 * 1000 };
+}
+
+async function loadDayCounts(day: string): Promise<DayCounts> {
+  const [whoIndex, ownerSources] = await Promise.all([getWhoIndex(), ownerSourceLoader.get()]);
+
+  // One query for the whole org for this one day. Rows for contacts/leads
+  // outside our 5,555 TAL accounts are discarded via the WhoId lookup. WhoId
+  // resolves against EITHER a Contact or a Lead (see getWhoIndex) - a real,
+  // confirmed gap was that Lead-owned touches were silently dropped entirely
+  // when only Contacts were checked. OwnerId splits Outreach.io touches into
+  // MDR vs SDR vs Sales (see TOUCHPOINTS doc comment).
+  const tasks = await sfDaySlots(() =>
+    soqlQuery<{ WhoId: string | null; Subject: string; TaskSubtype: string | null; OwnerId: string }>(
+      `SELECT WhoId, Subject, TaskSubtype, OwnerId FROM Task WHERE (${RANK_SUBJECT_OR}) AND ActivityDate = ${day}`
+    )
+  );
+
+  const counts: DayCounts = new Map();
   for (const t of tasks) {
-    const accId = whoIdToAccount.get(t.WhoId);
-    if (!accId || !ranks[accId]) continue;
+    const accId = t.WhoId ? whoIndex.whoToAccount.get(t.WhoId) : undefined;
+    if (!accId) continue;
 
     const matches = TOUCHPOINT_PATTERNS.filter((p) => patternMatches(t.Subject, t.TaskSubtype, p));
     if (matches.length === 0) continue;
 
+    let key: TouchpointKey | undefined;
     if (matches.length === 1) {
       // Marketing automation - prefix alone identifies the touchpoint.
-      ranks[accId][matches[0].key] += 1;
+      key = matches[0].key;
     } else {
       // Outreach.io mdr/sdr/sales trio sharing a prefix - the Task's owner
       // decides which bucket this touch belongs in.
-      const ownerName = t.Owner?.Name || "";
-      const source = MDR_OWNER_NAMES.has(ownerName) ? "mdr" : SDR_OWNER_NAMES.has(ownerName) ? "sdr" : "sales";
-      const chosen = matches.find((m) => m.source === source);
-      if (chosen) ranks[accId][chosen.key] += 1;
+      const source = ownerSources.get(t.OwnerId) ?? "sales";
+      key = matches.find((m) => m.source === source)?.key;
+    }
+    if (!key) continue;
+
+    let entry = counts.get(accId);
+    if (!entry) counts.set(accId, (entry = {}));
+    entry[key] = (entry[key] ?? 0) + 1;
+  }
+  return counts;
+}
+
+function refreshDay(day: string): Promise<DayCounts> {
+  const existing = dayInFlight.get(day);
+  if (existing) return existing;
+  const p = loadDayCounts(day)
+    .then((counts) => {
+      dayCache.set(day, { loadedAt: Date.now(), counts });
+      if (dayCache.size > DAY_CACHE_MAX_ENTRIES) {
+        let oldestDay: string | null = null;
+        let oldestAt = Infinity;
+        for (const [d, v] of dayCache) {
+          if (v.loadedAt < oldestAt) {
+            oldestAt = v.loadedAt;
+            oldestDay = d;
+          }
+        }
+        if (oldestDay) dayCache.delete(oldestDay);
+      }
+      return counts;
+    })
+    .finally(() => dayInFlight.delete(day));
+  dayInFlight.set(day, p);
+  return p;
+}
+
+/** Stale-while-revalidate per day: fresh -> cached; stale within limit -> cached + background refresh; otherwise wait. */
+function getDayCounts(day: string): { counts: Promise<DayCounts>; blocked: boolean } {
+  const entry = dayCache.get(day);
+  if (entry) {
+    const age = Date.now() - entry.loadedAt;
+    const { ttlMs, maxStaleMs } = dayPolicy(day);
+    if (age < ttlMs) return { counts: Promise.resolve(entry.counts), blocked: false };
+    if (age < maxStaleMs) {
+      refreshDay(day).catch((err) => console.error(`[rank] background refresh failed for ${day}:`, err));
+      return { counts: Promise.resolve(entry.counts), blocked: false };
+    }
+  }
+  return { counts: refreshDay(day), blocked: true };
+}
+
+type SparseRanks = Record<string, Partial<RankEntry>>;
+
+async function computeRanks(start: string, end: string): Promise<{ ranks: SparseRanks; cached: boolean }> {
+  const days = daysInRange(start, end);
+  const lookups = days.map(getDayCounts);
+  const [dayCounts, accounts, sessions, domainToAccount] = await Promise.all([
+    Promise.all(lookups.map((l) => l.counts)),
+    getAccountsFromSheet(),
+    getWebsiteSessions(),
+    getDomainToAccountId(),
+  ]);
+
+  const tal = new Set(accounts.map((a) => a.accountId));
+  const ranks: SparseRanks = {};
+  const entryFor = (accId: string) => (ranks[accId] ??= {});
+
+  for (const counts of dayCounts) {
+    for (const [accId, perKey] of counts) {
+      if (!tal.has(accId)) continue;
+      const entry = entryFor(accId);
+      for (const k in perKey) {
+        const key = k as TouchpointKey;
+        entry[key] = (entry[key] ?? 0) + (perKey[key] ?? 0);
+      }
     }
   }
 
   // Website sessions come from the real-time Google Sheet feed, not Salesforce -
   // cheap, so just filter the (already cached) sheet rows by date in memory.
-  const [sessions, domainToAccount] = await Promise.all([
-    getWebsiteSessions(),
-    getDomainToAccountId(),
-  ]);
   for (const s of sessions) {
     if (s.eventDate < start || s.eventDate > end) continue;
     const accId = domainToAccount.get(s.domain);
-    if (!accId || !ranks[accId]) continue;
-    ranks[accId].websiteSessions += 1;
+    if (!accId || !tal.has(accId)) continue;
+    const entry = entryFor(accId);
+    entry.websiteSessions = (entry.websiteSessions ?? 0) + 1;
     // High takes precedence over Medium when a session's entry/exit pages
     // happen to match both tiers - mirrors the fire-over-sun display rule.
     if (isHighIntentUrl(s.firstPageUrl) || isHighIntentUrl(s.latestPageUrl)) {
-      ranks[accId].highIntentSessions += 1;
+      entry.highIntentSessions = (entry.highIntentSessions ?? 0) + 1;
     } else if (isMediumIntentUrl(s.firstPageUrl) || isMediumIntentUrl(s.latestPageUrl)) {
-      ranks[accId].mediumIntentSessions += 1;
+      entry.mediumIntentSessions = (entry.mediumIntentSessions ?? 0) + 1;
     }
   }
 
-  return ranks;
+  return { ranks, cached: !lookups.some((l) => l.blocked) };
 }
 
-// Ranking is a full scan across every account's contacts/tasks for a date
-// range - still the most expensive endpoint even after the optimizations
-// above, so on top of the plain per-range cache this adds stale-while-
-// revalidate: once a week has been computed once, later requests for it
-// (even after the TTL expires) get the last-known numbers INSTANTLY while a
-// background refresh brings the cache back up to date for next time. Only a
-// week that has genuinely never been requested before has to block.
-// Unbounded until this cap: every distinct {start,end} week/month range ever
-// requested used to get its own permanent entry here (full per-account rank
-// data, ~5,555 accounts each) with nothing ever removing old ones - a slow
-// memory leak that built up over days of normal use (new weeks keep rolling
-// in) until the Node process on Render got OOM-killed (exit 134/SIGABRT).
-// Evicting the oldest-computed entry past this cap keeps memory bounded
-// while still comfortably covering every week/month combo someone would
-// realistically flip between in one sitting.
-const RANK_CACHE_MAX_ENTRIES = 60;
-const rankCache = new Map<string, { computedAt: number; ranks: Record<string, RankEntry> }>();
-const RANK_CACHE_TTL_MS = 10 * 60 * 1000;
-const rankInFlight = new Map<string, Promise<Record<string, RankEntry>>>();
-const recentRankKeys: string[] = []; // most-recently-requested first, deduped, capped
+/** Full (every account, every key, zeros included) shape - what clients that don't ask for sparse expect. */
+async function expandRanks(sparse: SparseRanks): Promise<Record<string, RankEntry>> {
+  const accounts = await getAccountsFromSheet();
+  const full: Record<string, RankEntry> = {};
+  for (const a of accounts) full[a.accountId] = { ...emptyRankEntry(), ...sparse[a.accountId] };
+  return full;
+}
 
-function setRankCache(key: string, ranks: Record<string, RankEntry>) {
-  rankCache.set(key, { computedAt: Date.now(), ranks });
-  while (rankCache.size > RANK_CACHE_MAX_ENTRIES) {
-    let oldestKey: string | null = null;
-    let oldestAt = Infinity;
-    for (const [k, v] of rankCache) {
-      if (v.computedAt < oldestAt) {
-        oldestAt = v.computedAt;
-        oldestKey = k;
-      }
-    }
-    if (oldestKey === null) break;
-    rankCache.delete(oldestKey);
+// The 1-3 ranges people most recently looked at, plus the current week -
+// their days are refreshed shortly before they'd go stale, so the dashboard
+// opens (and flips between recent weeks) instantly instead of waiting on
+// Salesforce.
+const recentRanges: { start: string; end: string }[] = [];
+
+function touchRecentRange(start: string, end: string) {
+  const i = recentRanges.findIndex((r) => r.start === start && r.end === end);
+  if (i >= 0) recentRanges.splice(i, 1);
+  recentRanges.unshift({ start, end });
+  recentRanges.length = Math.min(recentRanges.length, 3);
+}
+
+function currentWeekRangeIST(): { start: string; end: string } {
+  const today = todayIsoIST();
+  const dow = new Date(`${today}T00:00:00Z`).getUTCDay(); // 0 = Sunday
+  const start = addDays(today, -((dow + 6) % 7)); // back to Monday
+  return { start, end: addDays(start, 6) };
+}
+
+/** Kicks off (without waiting) loading of whatever is due - used on startup and on a timer. */
+function prewarmRanks() {
+  const days = new Set<string>();
+  for (const r of [currentWeekRangeIST(), ...recentRanges]) {
+    for (const d of daysInRange(r.start, r.end)) days.add(d);
   }
-}
-
-function touchRecentRankKey(key: string) {
-  const i = recentRankKeys.indexOf(key);
-  if (i >= 0) recentRankKeys.splice(i, 1);
-  recentRankKeys.unshift(key);
-  recentRankKeys.length = Math.min(recentRankKeys.length, 3);
-}
-
-function refreshRankInBackground(key: string, start: string, end: string): Promise<Record<string, RankEntry>> {
-  const existing = rankInFlight.get(key);
-  if (existing) return existing;
-  const p = computeRanks(start, end)
-    .then((ranks) => {
-      setRankCache(key, ranks);
-      return ranks;
-    })
-    .finally(() => rankInFlight.delete(key));
-  rankInFlight.set(key, p);
-  return p;
-}
-
-// Keeps whichever 1-3 weeks people are actually looking at pre-warmed:
-// refreshes them shortly before their cache would expire, so by the time a
-// user clicks back to a recently-viewed week, it's already fresh again -
-// without needing to know in advance which week "this week" is.
-setInterval(() => {
-  for (const key of recentRankKeys) {
-    const cached = rankCache.get(key);
-    if (!cached || Date.now() - cached.computedAt >= RANK_CACHE_TTL_MS - 30_000) {
-      const [start, end] = key.split("|");
-      // Fire-and-forget MUST be caught here - an uncaught rejection from a
-      // background refresh (e.g. a transient Salesforce timeout) would
-      // otherwise crash the whole Node process on an unhandled rejection.
-      refreshRankInBackground(key, start, end).catch((err) =>
-        console.error(`[rank] background prewarm failed for ${key}:`, err)
-      );
+  for (const day of days) {
+    const entry = dayCache.get(day);
+    if (!entry || Date.now() - entry.loadedAt >= dayPolicy(day).ttlMs - 60_000) {
+      // Fire-and-forget MUST be caught - an unhandled rejection from a
+      // transient Salesforce timeout would otherwise crash the process.
+      refreshDay(day).catch((err) => console.error(`[rank] prewarm failed for ${day}:`, err));
     }
   }
-}, 60 * 1000);
+}
 
-// GET /api/accounts/rank?start=YYYY-MM-DD&end=YYYY-MM-DD - every touchpoint
-// count for EVERY account in the given date range, used to sort the table
-// (accounts engaging on more distinct touchpoints rank first).
+setInterval(prewarmRanks, 60 * 1000).unref();
+
+/** Loads everything the dashboard's first screen needs, without waiting on it. Called once at server start. */
+export function prewarmCaches() {
+  const warm = (name: string, p: Promise<unknown>) =>
+    p.catch((err) => console.error(`[prewarm] ${name} failed:`, err));
+  warm("accounts", getAccountsFromSheet());
+  warm("website sessions", getWebsiteSessions());
+  warm("linkedin", getLinkedinSnapshotRows());
+  warm("factors history", getFactorsScoreIndex());
+  warm("live factors", liveFactorsLoader.get());
+  // Rank days need the Contact/Lead maps and owner buckets first; loading
+  // those here means the day queries below all share the same in-flight load.
+  warm(
+    "rank inputs",
+    Promise.all([getWhoIndex(), ownerSourceLoader.get()]).then(() => prewarmRanks())
+  );
+}
+
+// GET /api/accounts/rank?start=YYYY-MM-DD&end=YYYY-MM-DD[&sparse=1] - every
+// touchpoint count for EVERY account in the given date range, used to sort
+// the table. sparse=1 returns only accounts/keys with a non-zero count (the
+// client fills in zeros) - ~2.6MB down to ~90KB for a typical week, since
+// most accounts have no activity in any given week. Without it, the full
+// zero-filled shape is returned, so an older client still works.
 accountsRouter.get("/rank", async (req, res) => {
   try {
     const { start, end } = requireDateRange(req.query);
-    const key = `${start}|${end}`;
-    touchRecentRankKey(key);
-
-    const cached = rankCache.get(key);
-    const fresh = cached && Date.now() - cached.computedAt < RANK_CACHE_TTL_MS;
-
-    if (fresh) {
-      return res.json({ ranks: cached!.ranks, cached: true });
+    touchRecentRange(start, end);
+    const { ranks, cached } = await computeRanks(start, end);
+    if (req.query.sparse === "1") {
+      res.json({ ranks, cached, sparse: true });
+    } else {
+      res.json({ ranks: await expandRanks(ranks), cached });
     }
-    if (cached) {
-      // Don't await - serve stale data now. Must still attach a .catch so a
-      // transient failure here doesn't become an unhandled rejection.
-      refreshRankInBackground(key, start, end).catch((err) =>
-        console.error(`[rank] background refresh failed for ${key}:`, err)
-      );
-      return res.json({ ranks: cached.ranks, cached: "stale" });
-    }
-
-    const ranks = await refreshRankInBackground(key, start, end);
-    res.json({ ranks, cached: false });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -604,12 +772,22 @@ function receivedDateForWindow(rows: Awaited<ReturnType<typeof getLinkedinSnapsh
 // date. So this is intentionally NOT aligned to the Week 1-4 selector used
 // for email/WhatsApp/website - it's its own independent list of snapshots,
 // oldest first, each one appearing here automatically as it's exported.
+// Pure function of the LinkedIn tab + the roster, so it's built once per
+// reload of either rather than re-scanning every row per snapshot date on
+// every request.
+let linkedinSnapshotsCache: { liVer: number; accVer: number; body: unknown } | null = null;
+
 accountsRouter.get("/linkedin-snapshots", async (req, res) => {
   try {
     const [rows, domainToAccount] = await Promise.all([
       getLinkedinSnapshotRows(),
       getDomainToAccountId(),
     ]);
+    const liVer = linkedinVersion();
+    const accVer = accountsVersion();
+    if (linkedinSnapshotsCache && linkedinSnapshotsCache.liVer === liVer && linkedinSnapshotsCache.accVer === accVer) {
+      return res.json(linkedinSnapshotsCache.body);
+    }
 
     const dates = Array.from(new Set(rows.map((r) => r.snapshotDate).filter(Boolean))).sort();
     const snapshots = dates.map((asOfDate, i) => ({
@@ -620,7 +798,9 @@ accountsRouter.get("/linkedin-snapshots", async (req, res) => {
       metrics: sumLinkedinByAccount(rows, asOfDate, domainToAccount),
     }));
 
-    res.json({ snapshots });
+    const body = { snapshots };
+    linkedinSnapshotsCache = { liVer, accVer, body };
+    res.json(body);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -683,14 +863,16 @@ function parseTopEngagementSignals(raw: string): TopSignal[] {
 // its comment for why a live read doesn't make sense there. Cached briefly
 // so repeated page views in the same few minutes don't re-scan all 5,555
 // accounts on every request.
-let liveFactorsCache: { computedAt: number; byAccount: Record<string, FactorsSnapshot> } | null = null;
-const LIVE_FACTORS_CACHE_TTL_MS = 5 * 60 * 1000;
+const liveFactorsLoader = createCachedLoader("live-factors", loadLiveFactorsSnapshot, {
+  ttlMs: 5 * 60 * 1000,
+  maxStaleMs: 30 * 60 * 1000,
+});
 
-async function getLiveFactorsSnapshot(): Promise<Record<string, FactorsSnapshot>> {
-  if (liveFactorsCache && Date.now() - liveFactorsCache.computedAt < LIVE_FACTORS_CACHE_TTL_MS) {
-    return liveFactorsCache.byAccount;
-  }
+function getLiveFactorsSnapshot(): Promise<Record<string, FactorsSnapshot>> {
+  return liveFactorsLoader.get();
+}
 
+async function loadLiveFactorsSnapshot(): Promise<Record<string, FactorsSnapshot>> {
   const accounts = await getAccountsFromSheet();
   const byAccount: Record<string, FactorsSnapshot> = {};
 
@@ -704,8 +886,24 @@ async function getLiveFactorsSnapshot(): Promise<Record<string, FactorsSnapshot>
     }
   });
 
-  liveFactorsCache = { computedAt: Date.now(), byAccount };
   return byAccount;
+}
+
+/** Latest date in an ascending list that is <= `limit`, by binary search. */
+function latestDateOnOrBefore(sortedDates: string[], limit: string): string | null {
+  let lo = 0;
+  let hi = sortedDates.length - 1;
+  let found: string | null = null;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (sortedDates[mid] <= limit) {
+      found = sortedDates[mid];
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return found;
 }
 
 /**
@@ -728,9 +926,8 @@ async function resolveFactorsScores(
   const today = todayIsoIST();
   const effectiveEnd = end < today ? end : today;
 
-  const rows = await getFactorsScoreRows();
-  const availableDates = Array.from(new Set(rows.map((r) => r.runDate))).filter((d) => d <= effectiveEnd);
-  const latestSheetDate = availableDates.length > 0 ? availableDates.sort().at(-1)! : null;
+  const index = await getFactorsScoreIndex();
+  const latestSheetDate = latestDateOnOrBefore(index.dates, effectiveEnd);
 
   if (effectiveEnd === today && latestSheetDate !== today) {
     // Today hasn't been captured into history yet - go live.
@@ -745,8 +942,8 @@ async function resolveFactorsScores(
   }
 
   const byAccount: Record<string, FactorsSnapshot> = {};
-  for (const r of rows) {
-    if (r.runDate === latestSheetDate) byAccount[r.accountId] = { level: r.engagementLevel, score: r.engagementScore };
+  for (const r of index.byDate.get(latestSheetDate) ?? []) {
+    byAccount[r.accountId] = { level: r.engagementLevel, score: r.engagementScore };
   }
   return { asOfDate: latestSheetDate, isLive: false, byAccount };
 }
@@ -810,13 +1007,14 @@ async function computeFactorSpikes(
   newlyHot: SpikeAccount[];
   newlyWarm: SpikeAccount[];
 }> {
-  const [rows, accounts] = await Promise.all([getFactorsScoreRows(), getAccountsFromSheet()]);
+  const [index, accounts] = await Promise.all([getFactorsScoreIndex(), getAccountsFromSheet()]);
   const nameById = new Map(accounts.map((a) => [a.accountId, a.accountName]));
+  const rowsOn = (d: string) => index.byDate.get(d) ?? [];
 
   const today = todayIsoIST();
   const effectiveEnd = end < today ? end : today;
 
-  const sheetDates = Array.from(new Set(rows.map((r) => r.runDate))).sort();
+  const sheetDates = index.dates;
   const inRangeDates = sheetDates.filter((d) => d >= start && d <= effectiveEnd);
   const date = inRangeDates.at(-1) ?? null; // most recent day actually synced within this week so far
 
@@ -831,16 +1029,14 @@ async function computeFactorSpikes(
   const previousDate = sheetDates.filter((d) => d < start).at(-1) ?? null;
 
   const toByAccount: Record<string, { level: string; score: number | null; signals: string }> = {};
-  for (const r of rows) {
-    if (r.runDate === date) {
-      toByAccount[r.accountId] = { level: r.engagementLevel, score: r.engagementScore, signals: r.topEngagementSignals };
-    }
+  for (const r of rowsOn(date)) {
+    toByAccount[r.accountId] = { level: r.engagementLevel, score: r.engagementScore, signals: r.topEngagementSignals };
   }
 
   const fromByAccount: Record<string, { level: string; score: number | null }> = {};
   if (previousDate) {
-    for (const r of rows) {
-      if (r.runDate === previousDate) fromByAccount[r.accountId] = { level: r.engagementLevel, score: r.engagementScore };
+    for (const r of rowsOn(previousDate)) {
+      fromByAccount[r.accountId] = { level: r.engagementLevel, score: r.engagementScore };
     }
   }
 
@@ -849,9 +1045,10 @@ async function computeFactorSpikes(
   // rank, so the newest crossings can float to the top instead of being
   // buried under whichever account happens to score higher.
   const levelByDateThenAccount: Record<string, Record<string, string>> = {};
-  for (const d of inRangeDates) levelByDateThenAccount[d] = {};
-  for (const r of rows) {
-    if (levelByDateThenAccount[r.runDate]) levelByDateThenAccount[r.runDate][r.accountId] = r.engagementLevel;
+  for (const d of inRangeDates) {
+    const levels: Record<string, string> = {};
+    for (const r of rowsOn(d)) levels[r.accountId] = r.engagementLevel;
+    levelByDateThenAccount[d] = levels;
   }
 
   function crossedDateFor(accountId: string, toRank: number): string | null {
@@ -923,9 +1120,8 @@ accountsRouter.get("/factor-spikes", async (req, res) => {
 accountsRouter.get("/:id/factors-history", async (req, res) => {
   try {
     const { id } = req.params;
-    const rows = await getFactorsScoreRows();
-    const history = rows
-      .filter((r) => r.accountId === id)
+    const index = await getFactorsScoreIndex();
+    const history = (index.byAccount.get(id) ?? [])
       .map((r) => ({ date: r.runDate, level: r.engagementLevel, score: r.engagementScore, isLive: false }))
       .sort((a, b) => (a.date < b.date ? -1 : 1));
 
@@ -1026,21 +1222,30 @@ async function touchpointEvents(accountId: string, key: TouchpointKey, dateClaus
   // worked by MDR/SDR before conversion) were dropped entirely when only
   // Contacts were checked here (see getLeadToAccountMap for the field
   // mapping). Both are fetched and queried together below.
-  const [contacts, leads] = await Promise.all([
-    soqlQuery<{ Id: string }>(`SELECT Id FROM Contact WHERE AccountId = '${esc(accountId)}'`),
-    soqlQuery<{ Id: string }>(
-      `SELECT Id FROM Lead WHERE Company_Account_ID__c = '${esc(accountId)}' OR Account__c = '${esc(accountId)}'`
-    ),
-  ]);
-  const whoIds = [...contacts.map((c) => c.Id), ...leads.map((l) => l.Id)];
+  // The cached index (same Contact/Lead -> Account mapping the rank scan
+  // uses) saves two Salesforce round trips per popup; falls back to querying
+  // directly only if it hasn't loaded yet.
+  const whoIndex = peekWhoIndex();
+  let whoIds: string[];
+  if (whoIndex) {
+    whoIds = whoIndex.whoIdsByAccount.get(accountId) ?? [];
+  } else {
+    const [contacts, leads] = await Promise.all([
+      soqlQuery<{ Id: string }>(`SELECT Id FROM Contact WHERE AccountId = '${esc(accountId)}'`),
+      soqlQuery<{ Id: string }>(
+        `SELECT Id FROM Lead WHERE Company_Account_ID__c = '${esc(accountId)}' OR Account__c = '${esc(accountId)}'`
+      ),
+    ]);
+    whoIds = [...contacts.map((c) => c.Id), ...leads.map((l) => l.Id)];
+  }
   if (whoIds.length === 0) return { events: [] as any[] };
 
   const instanceUrl = await getInstanceUrl();
   const events: any[] = [];
 
-  for (const batch of chunk(whoIds, 400)) {
+  const batchResults = await Promise.all(chunk(whoIds, 400).map((batch) => {
     const inList = batch.map((id) => `'${esc(id)}'`).join(",");
-    const tasks = await soqlQuery<{
+    return soqlQuery<{
       Id: string;
       Subject: string;
       WhoId: string;
@@ -1052,7 +1257,9 @@ async function touchpointEvents(accountId: string, key: TouchpointKey, dateClaus
     }>(
       `SELECT Id, Subject, WhoId, Who.Name, Owner.Name, Owner.Email, ActivityDate, CreatedDate, Description FROM Task WHERE ${subjectClause} AND WhoId IN (${inList})${ownerClause}${dateClause} ORDER BY CreatedDate DESC LIMIT 500`
     );
+  }));
 
+  for (const tasks of batchResults) {
     for (const t of tasks) {
       // Marketing automation style: "Email_open - Campaign Name" -> "Campaign Name".
       // MDR/Outreach.io style: "[Outreach] [Email] [Opened] <actual subject>" ->
